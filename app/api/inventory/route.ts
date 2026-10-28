@@ -2,11 +2,24 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { createClient as createServerClient } from "@/lib/supabase/server";
 
-// Inicialización del cliente Supabase
+// Evita que Next.js guarde en caché la respuesta de GET.
+// Las tasas deben leerse de la base de datos en cada petición.
+export const dynamic = "force-dynamic";
+
+// Inicialización del cliente Supabase (solo servidor)
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const supabaseKey =
-  process.env.SUPABASE_SERVICE_ROLE_KEY ||
+  serviceRoleKey ||
+  process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+
+if (!serviceRoleKey) {
+  console.warn(
+    "[inventory] SUPABASE_SERVICE_ROLE_KEY no está definida: se usa la clave pública y RLS sí se aplica.",
+  );
+}
+
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 // Función auxiliar: Buscar o crear categoría por nombre
@@ -36,9 +49,9 @@ async function getOrCreateCategory(categoryName: string) {
 }
 
 /*
-  Comprueba que quien llama a este endpoint inició sesión como admin.
-  Se usa en POST, PATCH y DELETE (crear, editar, borrar), pero NO en
-  GET: el catálogo lo necesita leer cualquier visitante de la tienda.
+  Comprueba que quien llama es la administradora.
+  Se usa en POST, PATCH y DELETE, pero NO en GET.
+  Requiere la variable ADMIN_USER_ID en Cloudflare (UUID del administrador).
 */
 async function requireAdmin() {
   const supabaseAuth = await createServerClient();
@@ -53,11 +66,27 @@ async function requireAdmin() {
     );
   }
 
+  const adminId = process.env.ADMIN_USER_ID;
+  if (!adminId) {
+    console.error("ADMIN_USER_ID no está configurada en el servidor");
+    return NextResponse.json(
+      { error: "Configuración del servidor incompleta" },
+      { status: 500 },
+    );
+  }
+
+  if (user.id !== adminId) {
+    return NextResponse.json(
+      { error: "No tienes permiso para realizar esta acción." },
+      { status: 403 },
+    );
+  }
+
   return null;
 }
 
 // ========================================================
-// GET: Consultar Productos, Variantes e Historial de Stock
+// GET: Consultar Productos, Variantes, Historial y Tasas
 // ========================================================
 export async function GET() {
   try {
@@ -125,17 +154,29 @@ export async function GET() {
       })),
     }));
 
-    // Tasas guardadas desde el panel admin (tabla store_settings)
-    const { data: settings } = await supabase
+    // Tasas guardadas desde el panel admin (tabla store_settings).
+    // Si no se pueden leer, se responde con error: no se usan valores por defecto,
+    // porque las tasas afectan a los precios que ve la clienta.
+    const { data: settings, error: settingsError } = await supabase
       .from("store_settings")
-      .select("tasa_bnc, tasa_bcv")
+      .select("tasa_bnc, tasa_bcv, updated_at")
+      .order("updated_at", { ascending: false })
       .limit(1)
       .maybeSingle();
 
+    if (settingsError) throw settingsError;
+    if (!settings) {
+      throw new Error("No hay tasas configuradas en store_settings");
+    }
+
     const rates = {
-      tasaBNC: Number(settings?.tasa_bnc) || 1000,
-      tasaBCV: Number(settings?.tasa_bcv) || 745,
+      tasaBNC: Number(settings.tasa_bnc),
+      tasaBCV: Number(settings.tasa_bcv),
     };
+
+    if (!Number.isFinite(rates.tasaBNC) || !Number.isFinite(rates.tasaBCV)) {
+      throw new Error("Las tasas guardadas no son números válidos");
+    }
 
     return NextResponse.json({
       products: formattedProducts,
@@ -143,7 +184,7 @@ export async function GET() {
       rates,
     });
   } catch (error: any) {
-    console.error("Error en GET /api/products:", error);
+    console.error("Error en GET /api/inventory:", error);
     return NextResponse.json(
       { error: error.message || "Error al consultar el inventario" },
       { status: 500 },
@@ -288,7 +329,7 @@ export async function POST(req: Request) {
       { status: 201 },
     );
   } catch (error: any) {
-    console.error("Error en POST /api/products:", error);
+    console.error("Error en POST /api/inventory:", error);
 
     // Rollback manual: Si se creó el producto pero fallaron las variantes o procesos posteriores
     if (createdProductId) {
@@ -385,16 +426,22 @@ export async function PATCH(req: Request) {
             ? variant.products[0]
             : (variant as any).products;
 
-          await supabase.from("stock_history").insert({
-            product_id: variant.product_id,
-            variant_id: variantId,
-            product_name: product?.name || "",
-            color: variant.color || "",
-            size: variant.size || "",
-            sku: variant.sku || "",
-            quantity: Number(change),
-            arrival_date: arrivalDate || null,
-          });
+          const { error: histErr } = await supabase
+            .from("stock_history")
+            .insert({
+              product_id: variant.product_id,
+              variant_id: variantId,
+              product_name: product?.name || "",
+              color: variant.color || "",
+              size: variant.size || "",
+              sku: variant.sku || "",
+              quantity: Number(change),
+              arrival_date: arrivalDate || null,
+            });
+
+          // El stock ya se actualizó; solo registramos el fallo del historial.
+          if (histErr)
+            console.error("Error registrando historial de entrada:", histErr);
         }
 
         return NextResponse.json({ success: true, newStock });
@@ -550,7 +597,11 @@ export async function PATCH(req: Request) {
           }
 
           if (historyEntries.length > 0) {
-            await supabase.from("stock_history").insert(historyEntries);
+            const { error: histErr } = await supabase
+              .from("stock_history")
+              .insert(historyEntries);
+            if (histErr)
+              console.error("Error registrando historial de edición:", histErr);
           }
         }
 
@@ -594,7 +645,7 @@ export async function PATCH(req: Request) {
   } catch (error: any) {
     console.error("DETALLE ERROR 500 SERVIDOR:", error);
     return NextResponse.json(
-      { error: error?.message || "Error interno del servidor", details: error },
+      { error: error?.message || "Error interno del servidor" },
       { status: 500 },
     );
   }
@@ -628,7 +679,7 @@ export async function DELETE(req: Request) {
 
     return NextResponse.json({ success: true });
   } catch (error: any) {
-    console.error("Error en DELETE /api/products:", error);
+    console.error("Error en DELETE /api/inventory:", error);
     return NextResponse.json(
       { error: error.message || "Error al archivar el producto" },
       { status: 500 },
