@@ -125,27 +125,17 @@ export async function GET() {
       })),
     }));
 
-   
-  // Tasas guardadas desde el panel admin (tabla store_settings)
-const { data: { user } } = await supabase.auth.getUser();
-console.log("[inventory] user:", user?.id ?? "ANÓNIMO");
+    // Tasas guardadas desde el panel admin (tabla store_settings)
+    const { data: settings } = await supabase
+      .from("store_settings")
+      .select("tasa_bnc, tasa_bcv")
+      .limit(1)
+      .maybeSingle();
 
-const { data: settings, error: settingsError, count } = await supabase
-  .from("store_settings")
-  .select("tasa_bnc, tasa_bcv", { count: "exact" })
-  .limit(1)
-  .maybeSingle();
-
-console.log("[inventory] filas:", count, "settings:", settings, "error:", settingsError);
-
-if (settingsError) {
-  console.error("Error al leer las tasas:", settingsError);
-}
     const rates = {
       tasaBNC: Number(settings?.tasa_bnc) || 1000,
       tasaBCV: Number(settings?.tasa_bcv) || 745,
     };
-
 
     return NextResponse.json({
       products: formattedProducts,
