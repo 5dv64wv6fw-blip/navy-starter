@@ -118,7 +118,7 @@ export async function PATCH(req: Request) {
     }
 
     // Cliente con clave de servicio: solo se crea aquí, en el servidor
-    const admin = createClient(supabaseUrl, serviceKey);
+   const admin = createClient(supabaseUrl, serviceKey);
     const { data, error } = await admin
       .from("homepage_settings")
       .upsert({
