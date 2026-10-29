@@ -2,12 +2,15 @@ import { NextResponse } from "next/server";
 import { createClient as createServerClient } from "@/lib/supabase/server";
 import { createClient } from "@supabase/supabase-js";
 
+// UUID de la administradora. No es secreto: la protección real es la sesión.
+const ADMIN_USER_ID = "0a09a9cd-b7ed-49ac-b69a-18dcd2dab933";
+
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-const supabase = createClient(
-  supabaseUrl,
-  serviceKey || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!,
-);
+const publicKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!;
+
+// Cliente público: solo para leer (la tabla tiene lectura pública)
+const supabase = createClient(supabaseUrl, publicKey);
 
 const defaultContent = {
   hero: {
@@ -51,12 +54,13 @@ const defaultContent = {
   },
 };
 
-async function authorized() {
+// Devuelve true solo si quien llama es la administradora
+async function isAdmin() {
   const authClient = await createServerClient();
   const {
     data: { user },
   } = await authClient.auth.getUser();
-  return Boolean(user);
+  return Boolean(user && user.id === ADMIN_USER_ID);
 }
 
 export async function GET() {
@@ -80,12 +84,26 @@ export async function GET() {
 }
 
 export async function PATCH(req: Request) {
-  if (!(await authorized())) {
+  if (!(await isAdmin())) {
     return NextResponse.json(
-      { error: "Debes iniciar sesión para guardar cambios." },
-      { status: 401 },
+      { error: "No tienes permiso para guardar la homepage." },
+      { status: 403 },
     );
   }
+
+  if (!serviceKey) {
+    console.error(
+      "[homepage] SUPABASE_SERVICE_ROLE_KEY no está definida: no se puede guardar.",
+    );
+    return NextResponse.json(
+      {
+        error:
+          "Falta SUPABASE_SERVICE_ROLE_KEY en el servidor. Avisa al equipo técnico.",
+      },
+      { status: 500 },
+    );
+  }
+
   try {
     const body = await req.json();
     if (
@@ -98,21 +116,23 @@ export async function PATCH(req: Request) {
         { status: 400 },
       );
     }
-    if (!serviceKey) {
-      return NextResponse.json(
-        {
-          error:
-            "Falta SUPABASE_SERVICE_ROLE_KEY en las variables de entorno del servidor.",
-        },
-        { status: 500 },
-      );
-    }
-    const { error } = await supabase.from("homepage_settings").upsert({
-      id: 1,
-      content: body.content,
-      updated_at: new Date().toISOString(),
-    });
+
+    // Cliente con clave de servicio: solo se crea aquí, en el servidor
+    const admin = createClient(supabaseUrl, serviceKey);
+    const { data, error } = await admin
+      .from("homepage_settings")
+      .upsert({
+        id: 1,
+        content: body.content,
+        updated_at: new Date().toISOString(),
+      })
+      .select("id, updated_at");
+
     if (error) throw error;
+    if (!data || data.length === 0) {
+      throw new Error("La homepage no se actualizó en la base de datos.");
+    }
+
     return NextResponse.json({ success: true });
   } catch (error: any) {
     console.error("PATCH /api/homepage", error);
