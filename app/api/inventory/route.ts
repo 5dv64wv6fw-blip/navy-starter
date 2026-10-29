@@ -6,6 +6,9 @@ import { createClient as createServerClient } from "@/lib/supabase/server";
 // Las tasas deben leerse de la base de datos en cada petición.
 export const dynamic = "force-dynamic";
 
+// UUID de la administradora. No es secreto: la protección real es la sesión.
+const ADMIN_USER_ID = "0a09a9cd-b7ed-49ac-b69a-18dcd2dab933";
+
 // Inicialización del cliente Supabase (solo servidor)
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -51,7 +54,6 @@ async function getOrCreateCategory(categoryName: string) {
 /*
   Comprueba que quien llama es la administradora.
   Se usa en POST, PATCH y DELETE, pero NO en GET.
-  Requiere la variable ADMIN_USER_ID en Cloudflare (UUID del administrador).
 */
 async function requireAdmin() {
   const supabaseAuth = await createServerClient();
@@ -66,16 +68,7 @@ async function requireAdmin() {
     );
   }
 
-  const adminId = process.env.ADMIN_USER_ID;
-  if (!adminId) {
-    console.error("ADMIN_USER_ID no está configurada en el servidor");
-    return NextResponse.json(
-      { error: "Configuración del servidor incompleta" },
-      { status: 500 },
-    );
-  }
-
-  if (user.id !== adminId) {
+  if (user.id !== ADMIN_USER_ID) {
     return NextResponse.json(
       { error: "No tienes permiso para realizar esta acción." },
       { status: 403 },
