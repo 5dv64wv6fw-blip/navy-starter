@@ -11,6 +11,8 @@ export interface CartItem {
   color?: string;
   quantity: number;
   image?: string;
+  /** Unidades disponibles en inventario para esta variante (límite de compra) */
+  maxStock?: number;
 }
 
 export interface CartContextType {
@@ -30,6 +32,12 @@ export interface CartContextType {
 
 const CartContext = createContext<CartContextType | undefined>(undefined);
 
+// Ajusta una cantidad al máximo permitido por el inventario
+function capQuantity(quantity: number, maxStock?: number): number {
+  if (maxStock === undefined || maxStock === null) return quantity;
+  return Math.max(0, Math.min(quantity, maxStock));
+}
+
 export function CartProvider({ children }: { children: React.ReactNode }) {
   const [cart, setCart] = useState<CartItem[]>([]);
   const [isCartOpen, setIsCartOpen] = useState<boolean>(false);
@@ -42,12 +50,33 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       const existingIndex = prevCart.findIndex(
         (item) => item.id === newItem.id && item.size === newItem.size,
       );
+
       if (existingIndex > -1) {
+        const current = prevCart[existingIndex];
+        const limit = newItem.maxStock ?? current.maxStock;
+        const nextQuantity = capQuantity(
+          current.quantity + (newItem.quantity || 1),
+          limit,
+        );
+
         const updated = [...prevCart];
-        updated[existingIndex].quantity += newItem.quantity || 1;
+        updated[existingIndex] = {
+          ...current,
+          quantity: nextQuantity,
+          maxStock: limit,
+        };
         return updated;
       }
-      return [...prevCart, { ...newItem, quantity: newItem.quantity || 1 }];
+
+      const initialQuantity = capQuantity(
+        newItem.quantity || 1,
+        newItem.maxStock,
+      );
+
+      // Si no hay stock, no se agrega nada
+      if (initialQuantity <= 0) return prevCart;
+
+      return [...prevCart, { ...newItem, quantity: initialQuantity }];
     });
     openCart();
   };
@@ -67,10 +96,16 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       removeFromCart(id, size);
       return;
     }
+
     setCart((prevCart) =>
-      prevCart.map((item) =>
-        item.id === id && item.size === size ? { ...item, quantity } : item,
-      ),
+      prevCart.map((item) => {
+        if (item.id !== id || item.size !== size) return item;
+
+        return {
+          ...item,
+          quantity: capQuantity(quantity, item.maxStock),
+        };
+      }),
     );
   };
 
