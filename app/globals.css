@@ -1,7 +1,7 @@
 @import url("https://fonts.googleapis.com/css2?family=Gowun+Batang:wght@400;700&family=DM+Sans:wght@400;500;700&display=swap");
 
 :root {
-  --cream: #fffff0; /* CAMBIO: antes #fffff (valor inválido) */
+  --cream: #fbfaf7; /* CAMBIO: antes #fffff (valor inválido) */
   --ink: #18333a;
   --blue: #8fb6bf;
   --soft: #dce9e6;
