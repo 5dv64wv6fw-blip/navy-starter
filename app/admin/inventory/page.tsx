@@ -1286,7 +1286,7 @@ export default function InventoryPage() {
       <section
         style={{
           marginBottom: 20,
-          background: "#faf9f6",
+          background: "#fff",
           border: "1px solid #eee",
           borderRadius: 10,
           padding: 16,
