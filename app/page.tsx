@@ -120,21 +120,13 @@ export default function Home() {
   };
 
   const loadData = async () => {
-    console.log("NAVY: iniciando carga");
-
     try {
       const catalogPromise = fetch("/api/inventory", {
         cache: "no-store",
-      }).then(async (res) => {
-        console.log("NAVY inventory status:", res.status);
-        return res;
       });
 
       const homepagePromise = fetch("/api/homepage", {
         cache: "no-store",
-      }).then(async (res) => {
-        console.log("NAVY homepage status:", res.status);
-        return res;
       });
 
       const [catalogRes, homepageRes] = await Promise.all([
@@ -144,24 +136,21 @@ export default function Home() {
 
       if (catalogRes.ok) {
         const data = await catalogRes.json();
-        console.log("NAVY productos recibidos:", data.products?.length);
         setProducts(data.products || []);
         if (data.rates) setRates(data.rates);
       } else {
-        console.error("NAVY: falló inventory", catalogRes.status);
+        console.error("Error cargando el catálogo:", catalogRes.status);
       }
 
       if (homepageRes.ok) {
         const data = await homepageRes.json();
-        console.log("NAVY: contenido homepage recibido", !!data.content);
         setHomepage(mergeDefaults(data.content));
       } else {
-        console.error("NAVY: falló homepage", homepageRes.status);
+        console.error("Error cargando la homepage:", homepageRes.status);
       }
     } catch (error) {
-      console.error("NAVY: error al cargar datos", error);
+      console.error("Error al cargar datos:", error);
     } finally {
-      console.log("NAVY: terminó la carga");
       setLoading(false);
     }
   };
@@ -292,9 +281,6 @@ export default function Home() {
                 product.variants.find((v) => Number(v.stock) > 0)?.size ||
                 product.variants[0]?.size;
               const currentSize = selectedSizes[product.id] || defaultSize;
-              const activeVariant =
-                product.variants.find((v) => v.size === currentSize) ||
-                product.variants[0];
               const pricing = calculatePricing(
                 Number(product.dollarPrice || 0),
                 rates,
@@ -372,11 +358,12 @@ export default function Home() {
                         </small>
                       </div>
                     </div>
+                    {/* CAMBIO: mismo estilo que el descuento de product/[slug] */}
                     <div
                       style={{
                         margin: "6px 0 10px",
                         padding: "5px 8px",
-                        backgroundColor: "#18333a",
+                        backgroundColor: "#f5f8f5",
                         borderRadius: 4,
                         fontSize: 11,
                         color: "#1e5c22",
@@ -442,13 +429,6 @@ export default function Home() {
                         );
                       })}
                     </div>
-                    {activeVariant?.color && (
-                      <div
-                        style={{ marginTop: 8, fontSize: 11, color: "#666" }}
-                      >
-                        Color: {activeVariant.color}
-                      </div>
-                    )}
                   </div>
                 </div>
               );
@@ -505,7 +485,6 @@ export default function Home() {
             <span className="eyebrow">{homepage.vibes.eyebrow}</span>
             <h2>{homepage.vibes.title}</h2>
             <p className="muted">{homepage.vibes.description}</p>
-            {/* CAMBIO: botón "Discover our vibes" con color propio */}
             <Link
               className="cta"
               style={{
