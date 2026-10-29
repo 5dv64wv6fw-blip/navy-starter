@@ -171,7 +171,8 @@ export default function ProductPage({
 
   const targetSlug = normalizeSlug(rawSlug);
 
-  const { addToCart } = useCart();
+  // cart se usa para no permitir más unidades que el inventario disponible
+  const { addToCart, cart } = useCart();
 
   const [variants, setVariants] = useState<ProductVariant[]>([]);
 
@@ -294,11 +295,15 @@ export default function ProductPage({
         );
         setSelectedImageIndex(0);
 
-        // Extraer colores disponibles
+        // Solo usamos variantes con stock para la selección inicial
 
-        const availableColors = Array.from(
+        const inStockMatches = matchingVariants.filter(
+          (v) => Number(v.stock || 0) > 0,
+        );
+
+        const colorsInStock = Array.from(
           new Set(
-            matchingVariants
+            inStockMatches
 
               .map((v) => v.color)
 
@@ -306,23 +311,18 @@ export default function ProductPage({
           ),
         );
 
-        const initialColor = availableColors[0] || "";
+        const initialColor = colorsInStock[0] || "";
 
         setSelectedColor(initialColor);
 
-        // Filtrar la mejor variante inicial (con stock)
-
         const variantsForColor = initialColor
-          ? matchingVariants.filter((v) => v.color === initialColor)
-          : matchingVariants;
+          ? inStockMatches.filter((v) => v.color === initialColor)
+          : inStockMatches;
 
-        const availableVariant =
-          variantsForColor.find((v) => Number(v.stock || 0) > 0) ||
-          variantsForColor[0] ||
-          matchingVariants[0];
+        const firstAvailable = variantsForColor[0];
 
-        if (availableVariant?.size) {
-          setSelectedSize(availableVariant.size);
+        if (firstAvailable?.size) {
+          setSelectedSize(firstAvailable.size);
         }
       }
     } catch (error) {
@@ -336,11 +336,15 @@ export default function ProductPage({
     loadProductData();
   }, [rawSlug]);
 
-  // Obtener lista de colores únicos
+  // Solo mostramos variantes con stock: los colores y tallas agotados no aparecen
+
+  const inStockVariants = variants.filter((v) => Number(v.stock || 0) > 0);
+
+  // Lista de colores únicos con stock
 
   const availableColors = Array.from(
     new Set(
-      variants.map((v) => v.color).filter((c): c is string => Boolean(c)),
+      inStockVariants.map((v) => v.color).filter((c): c is string => Boolean(c)),
     ),
   );
 
@@ -350,28 +354,29 @@ export default function ProductPage({
     setSelectedColor(color);
     setSelectedImageIndex(0);
 
-    const colorVariants = variants.filter((v) => v.color === color);
+    const colorVariants = inStockVariants.filter((v) => v.color === color);
 
-    const inStockVariant =
-      colorVariants.find((v) => Number(v.stock || 0) > 0) || colorVariants[0];
-
-    if (inStockVariant?.size) {
-      setSelectedSize(inStockVariant.size);
+    if (colorVariants[0]?.size) {
+      setSelectedSize(colorVariants[0].size);
     }
   };
 
-  // Filtrar variantes según el color activo
+  // Variantes con stock del color activo
 
   const activeColorVariants = selectedColor
-    ? variants.filter((v) => v.color === selectedColor)
-    : variants;
+    ? inStockVariants.filter((v) => v.color === selectedColor)
+    : inStockVariants;
 
-  // Encontrar la variante específica según Color y Talla
+  // Variante específica según Color y Talla
 
   const activeVariant =
     activeColorVariants.find((v) => v.size === selectedSize) ||
     activeColorVariants[0] ||
     variants[0];
+
+  // Talla realmente mostrada (si la seleccionada se agotó, usamos otra disponible)
+
+  const currentSize = activeVariant?.size || selectedSize;
 
   // Nombre base
 
@@ -420,11 +425,39 @@ export default function ProductPage({
             new Set(variants.flatMap((v) => v.images || []).filter(Boolean)),
           );
 
+  // Stock real de la variante activa y cuántas unidades ya están en la bolsa
+
+  const isOutOfStock = !activeVariant || Number(activeVariant.stock || 0) <= 0;
+
+  const stockDisponible = Number(activeVariant?.stock || 0);
+
+  const cartItemId = activeVariant
+    ? String(
+        activeVariant.id || `${targetSlug}-${selectedColor}-${currentSize}`,
+      )
+    : "";
+
+  const cantidadEnBolsa = cart
+    .filter(
+      (item) =>
+        String(item.id) === cartItemId && item.size === currentSize,
+    )
+    .reduce((sum, item) => sum + item.quantity, 0);
+
+  const bolsaLlena = !isOutOfStock && cantidadEnBolsa >= stockDisponible;
+
   const handleAddToCart = () => {
-    if (!activeVariant || Number(activeVariant.stock || 0) <= 0) return;
+    if (!activeVariant || isOutOfStock) return;
+
+    if (bolsaLlena) {
+      alert(
+        `Ya tienes en tu bolsa las ${stockDisponible} unidad(es) disponibles de esta talla.`,
+      );
+      return;
+    }
 
     addToCart({
-      id: activeVariant.id || `${targetSlug}-${selectedColor}-${selectedSize}`,
+      id: cartItemId,
 
       name: baseName,
 
@@ -432,7 +465,7 @@ export default function ProductPage({
 
       dollarPrice: numericPrice,
 
-      size: selectedSize,
+      size: currentSize,
 
       color: selectedColor || undefined,
 
@@ -444,6 +477,9 @@ export default function ProductPage({
         "",
 
       quantity: 1,
+
+      // Límite para que el carrito nunca supere el inventario
+      maxStock: stockDisponible,
     } as any);
   };
 
@@ -470,8 +506,6 @@ export default function ProductPage({
       </main>
     );
   }
-
-  const isOutOfStock = !activeVariant || Number(activeVariant.stock || 0) <= 0;
 
   return (
     <main style={{ minHeight: "100vh", backgroundColor: "var(--cream)" }}>
@@ -687,7 +721,7 @@ export default function ProductPage({
                 "Pieza atemporal de nuestra colección, diseñada con materiales de alta calidad para acompañarte en tu día a día."}
             </p>
 
-            {/* Selector de Color */}
+            {/* Selector de Color (solo colores con stock) */}
 
             {availableColors.length > 0 && (
               <div style={{ marginBottom: "24px", maxWidth: "450px" }}>
@@ -750,108 +784,113 @@ export default function ProductPage({
               </div>
             )}
 
-            {/* Selector de Tallas Interactivo */}
+            {/* Selector de Tallas (solo tallas con stock) */}
 
-            <div style={{ marginBottom: "32px", maxWidth: "450px" }}>
-              <div
+            {activeColorVariants.length > 0 && (
+              <div style={{ marginBottom: "32px", maxWidth: "450px" }}>
+                <div
+                  style={{
+                    display: "flex",
+
+                    justifyContent: "space-between",
+
+                    marginBottom: "12px",
+                  }}
+                >
+                  <span
+                    style={{
+                      fontSize: "12px",
+
+                      textTransform: "uppercase",
+
+                      letterSpacing: "0.1em",
+                    }}
+                  >
+                    Talla: <strong>{currentSize || "Seleccionar"}</strong>
+                  </span>
+
+                  <button
+                    onClick={() => toggleSection("sizeGuide")}
+                    style={{
+                      background: "none",
+
+                      border: "none",
+
+                      fontSize: "12px",
+
+                      textDecoration: "underline",
+
+                      cursor: "pointer",
+
+                      color: "#666",
+                    }}
+                  >
+                    Guía de tallas
+                  </button>
+                </div>
+
+                <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
+                  {activeColorVariants.map((v) => {
+                    const isSelected = currentSize === v.size;
+
+                    return (
+                      <button
+                        key={v.id || v.size}
+                        onClick={() => v.size && setSelectedSize(v.size)}
+                        style={{
+                          background: isSelected ? "#111" : "transparent",
+
+                          color: isSelected ? "#fff" : "#111",
+
+                          border: isSelected
+                            ? "1px solid #111"
+                            : "1px solid #ccc",
+
+                          padding: "12px 0",
+
+                          width: "65px",
+
+                          cursor: "pointer",
+
+                          fontFamily: "inherit",
+
+                          fontSize: "13px",
+
+                          transition: "all 0.2s",
+                        }}
+                        title={`Disponibles: ${v.stock}`}
+                      >
+                        {v.size}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Mensaje cuando no hay nada disponible */}
+
+            {variants.length > 0 && inStockVariants.length === 0 && (
+              <p
                 style={{
-                  display: "flex",
+                  maxWidth: "450px",
 
-                  justifyContent: "space-between",
+                  fontSize: "14px",
 
-                  marginBottom: "12px",
+                  color: "#666",
+
+                  marginBottom: "32px",
                 }}
               >
-                <span
-                  style={{
-                    fontSize: "12px",
-
-                    textTransform: "uppercase",
-
-                    letterSpacing: "0.1em",
-                  }}
-                >
-                  Talla: <strong>{selectedSize || "Seleccionar"}</strong>
-                </span>
-
-                <button
-                  onClick={() => toggleSection("sizeGuide")}
-                  style={{
-                    background: "none",
-
-                    border: "none",
-
-                    fontSize: "12px",
-
-                    textDecoration: "underline",
-
-                    cursor: "pointer",
-
-                    color: "#666",
-                  }}
-                >
-                  Guía de tallas
-                </button>
-              </div>
-
-              <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
-                {activeColorVariants.map((v) => {
-                  const isSelected = selectedSize === v.size;
-
-                  const outOfStock = Number(v.stock || 0) <= 0;
-
-                  return (
-                    <button
-                      key={v.id || v.size}
-                      onClick={() =>
-                        !outOfStock && v.size && setSelectedSize(v.size)
-                      }
-                      disabled={outOfStock}
-                      style={{
-                        background: isSelected
-                          ? "#111"
-                          : outOfStock
-                            ? "#f5f5f5"
-                            : "transparent",
-
-                        color: isSelected
-                          ? "#fff"
-                          : outOfStock
-                            ? "#aaa"
-                            : "#111",
-
-                        border: isSelected
-                          ? "1px solid #111"
-                          : "1px solid #ccc",
-
-                        padding: "12px 0",
-
-                        width: "65px",
-
-                        cursor: outOfStock ? "not-allowed" : "pointer",
-
-                        fontFamily: "inherit",
-
-                        fontSize: "13px",
-
-                        transition: "all 0.2s",
-
-                        textDecoration: outOfStock ? "line-through" : "none",
-                      }}
-                      title={outOfStock ? "Agotado" : `Disponibles: ${v.stock}`}
-                    >
-                      {v.size}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
+                Esta prenda está agotada por el momento.
+              </p>
+            )}
 
             {/* Botón CTA (Add to Bag) */}
 
             <button
               onClick={handleAddToCart}
-              disabled={isOutOfStock}
+              disabled={isOutOfStock || bolsaLlena}
               className="cta"
               style={{
                 width: "100%",
@@ -860,7 +899,8 @@ export default function ProductPage({
 
                 border: "none",
 
-                cursor: isOutOfStock ? "not-allowed" : "pointer",
+                cursor:
+                  isOutOfStock || bolsaLlena ? "not-allowed" : "pointer",
 
                 textAlign: "center",
 
@@ -872,12 +912,17 @@ export default function ProductPage({
 
                 fontSize: "14px",
 
-                backgroundColor: isOutOfStock ? "#ccc" : "#111",
+                backgroundColor:
+                  isOutOfStock || bolsaLlena ? "#ccc" : "#111",
 
                 color: "#fff",
               }}
             >
-              {isOutOfStock ? "Agotado" : "Add to Bag"}
+              {isOutOfStock
+                ? "Agotado"
+                : bolsaLlena
+                  ? "Máximo disponible en tu bolsa"
+                  : "Add to Bag"}
             </button>
 
             {/* Acordeones Informativos */}
@@ -1111,8 +1156,6 @@ export default function ProductPage({
                       delivery o flete por cambio corre por cuenta del cliente
                       (salvo por defecto de fábrica).
                     </p>
-
-                    
                   </div>
                 )}
               </div>
