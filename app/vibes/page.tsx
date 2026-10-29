@@ -7,7 +7,7 @@ export default function VibesPage() {
   return (
     <main
       style={{
-        backgroundColor: "#ffffff", /* CAMBIO: fondo blanco */
+        backgroundColor: "#fbfaf7", /* CAMBIO: fondo blanco */
         minHeight: "100vh",
       }}
     >
