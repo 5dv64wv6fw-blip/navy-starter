@@ -382,6 +382,7 @@ export async function POST(request: Request) {
         );
       }
       const id = String(item.variantId);
+      // Sumamos las cantidades repetidas de la misma variante antes de validar stock
       qtyByVariant.set(id, (qtyByVariant.get(id) || 0) + quantity);
     }
 
@@ -419,11 +420,16 @@ export async function POST(request: Request) {
         );
       }
 
-      if (Number(variant.stock || 0) < quantity) {
+      // Validación de stock en el servidor: la página no puede confiarse
+      const stockReal = Number(variant.stock || 0);
+      if (stockReal < quantity) {
         return NextResponse.json(
           {
             success: false,
-            error: `No hay suficiente stock de ${product.name} (${variant.size || "única"})`,
+            error:
+              stockReal > 0
+                ? `Solo quedan ${stockReal} unidad(es) de ${product.name} (${variant.size || "única"}).`
+                : `${product.name} (${variant.size || "única"}) ya está agotado.`,
           },
           { status: 409 },
         );
