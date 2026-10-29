@@ -10,6 +10,9 @@ const ORDER_SELECT = `
   order_items ( product_name, color, size, quantity, unit_price_usd, total_price_usd )
 `;
 
+// Estado del panel que significa "pedido cancelado"
+const CANCELLED_STATUS = "Cancelled";
+
 /*
   Convierte una fila de la base de datos en el objeto que usa el panel.
   GET y PATCH usan esta MISMA función, así el pedido siempre llega completo.
@@ -83,6 +86,18 @@ async function requireAdmin() {
   return null;
 }
 
+// Cliente con permisos de servidor. Solo se crea aquí, nunca llega al navegador.
+function getAdminDb() {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (!supabaseUrl || !serviceKey) {
+    throw new Error("Configuración del servidor incompleta");
+  }
+
+  return createAdminClient(supabaseUrl, serviceKey);
+}
+
 export async function GET() {
   const authError = await requireAdmin();
   if (authError) return authError;
@@ -127,75 +142,100 @@ export async function GET() {
 }
 
 /*
-  Descuenta del inventario las prendas de un pedido, y deja el rastro
-  en stock_history. Se usa una sola vez por pedido, protegido por la
-  columna orders.stock_deducted, para nunca descontar dos veces aunque
-  el estado "Pago Confirmado" se vuelva a guardar por error.
+  RESERVA: descuenta del stock disponible las prendas de un pedido recién
+  creado. Se ejecuta una sola vez por pedido (stock_reserved).
+  Si alguna variante no tiene stock suficiente en este momento, lanza error
+  y el pedido se deshace.
 */
-async function deductStockForOrder(
-  orderDatabaseId: string,
-  orderNumber: string,
-) {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+async function reserveStockForOrder(db: any, orderDatabaseId: string) {
+  const { data: items, error: itemsError } = await db
+    .from("order_items")
+    .select("variant_id, quantity, product_name, size")
+    .eq("order_id", orderDatabaseId);
 
-  if (!supabaseUrl || !serviceKey) {
-    console.error(
-      "No se pudo descontar stock: faltan NEXT_PUBLIC_SUPABASE_URL o SUPABASE_SERVICE_ROLE_KEY",
-    );
-    return;
+  if (itemsError) throw itemsError;
+
+  // Descontamos cada variante. Usamos una validación de stock antes de restar.
+  for (const item of items || []) {
+    if (!item.variant_id) continue;
+
+    const { data: variant, error: variantError } = await db
+      .from("product_variants")
+      .select("id, stock")
+      .eq("id", item.variant_id)
+      .single();
+
+    if (variantError || !variant) {
+      throw new Error(`No se encontró la talla de ${item.product_name}.`);
+    }
+
+    const stockActual = Number(variant.stock || 0);
+    const cantidad = Number(item.quantity || 0);
+
+    if (stockActual < cantidad) {
+      throw new Error(
+        `Ya no hay suficiente stock de ${item.product_name} (${item.size}).`,
+      );
+    }
+
+    const { error: updateError } = await db
+      .from("product_variants")
+      .update({ stock: stockActual - cantidad })
+      .eq("id", variant.id);
+
+    if (updateError) throw updateError;
   }
 
-  const db = createAdminClient(supabaseUrl, serviceKey);
+  const { error: flagError } = await db
+    .from("orders")
+    .update({ stock_reserved: true })
+    .eq("id", orderDatabaseId);
 
+  if (flagError) throw flagError;
+}
+
+/*
+  LIBERACIÓN: devuelve al stock disponible las prendas de un pedido cancelado.
+  Se ejecuta una sola vez por pedido (stock_released), así nunca se suma dos veces.
+*/
+async function releaseStockForOrder(db: any, orderDatabaseId: string) {
   const { data: items, error: itemsError } = await db
     .from("order_items")
     .select("variant_id, quantity")
     .eq("order_id", orderDatabaseId);
 
-  if (itemsError) {
-    console.error(
-      "Error leyendo prendas del pedido para descontar stock:",
-      itemsError,
-    );
-    return;
-  }
+  if (itemsError) throw itemsError;
 
   for (const item of items || []) {
     if (!item.variant_id) continue;
 
     const { data: variant, error: variantError } = await db
       .from("product_variants")
-      .select("id, product_id, stock")
+      .select("id, stock")
       .eq("id", item.variant_id)
       .single();
 
     if (variantError || !variant) {
-      console.error("Variante no encontrada al descontar stock:", variantError);
+      console.error("Variante no encontrada al liberar stock:", variantError);
       continue;
     }
 
-    const newStock = Math.max(
-      0,
-      Number(variant.stock || 0) - Number(item.quantity || 0),
-    );
-
-    await db
+    const { error: updateError } = await db
       .from("product_variants")
-      .update({ stock: newStock })
+      .update({
+        stock: Number(variant.stock || 0) + Number(item.quantity || 0),
+      })
       .eq("id", variant.id);
 
-    // No registramos esto en stock_history: esa tabla es el
-    // "Historial de Entradas" (solo mercancía que llega). El rastro
-    // de esta venta ya queda guardado en el pedido (order_items).
+    if (updateError) throw updateError;
   }
 
-  // Marcamos el pedido para que esto no vuelva a ejecutarse, y
-  // guardamos cuándo se confirmó el pago (para los reportes mensuales)
-  await db
+  const { error: flagError } = await db
     .from("orders")
-    .update({ stock_deducted: true, paid_at: new Date().toISOString() })
+    .update({ stock_released: true })
     .eq("id", orderDatabaseId);
+
+  if (flagError) throw flagError;
 }
 
 export async function PATCH(request: Request) {
@@ -251,11 +291,16 @@ export async function PATCH(request: Request) {
       );
     }
 
-    // Si este cambio confirma el pago y todavía no se descontó el stock
-    // de este pedido, lo descontamos ahora.
-    if (data.payment_status === "Confirmed" && !data.stock_deducted) {
-      await deductStockForOrder(data.id, data.order_number);
-      data.stock_deducted = true;
+    // Si el pedido se cancela y su stock estaba reservado y aún no se liberó,
+    // devolvemos las prendas al inventario disponible.
+    if (
+      data.order_status === CANCELLED_STATUS &&
+      data.stock_reserved &&
+      !data.stock_released
+    ) {
+      const db = getAdminDb();
+      await releaseStockForOrder(db, data.id);
+      data.stock_released = true;
     }
 
     return NextResponse.json({
@@ -293,21 +338,16 @@ const DELIVERY_FEE_USD = 5;
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
 export async function POST(request: Request) {
-  // Cliente con permisos de servidor: solo existe aquí, nunca llega al navegador
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-  if (!supabaseUrl || !serviceKey) {
-    console.error(
-      "Faltan NEXT_PUBLIC_SUPABASE_URL o SUPABASE_SERVICE_ROLE_KEY",
-    );
+  let db: any;
+  try {
+    db = getAdminDb();
+  } catch {
     return NextResponse.json(
       { success: false, error: "Configuración del servidor incompleta" },
       { status: 500 },
     );
   }
 
-  const db = createAdminClient(supabaseUrl, serviceKey);
   let createdOrderId: string | null = null;
 
   try {
@@ -420,7 +460,7 @@ export async function POST(request: Request) {
         );
       }
 
-      // Validación de stock en el servidor: la página no puede confiarse
+      // Validación previa de stock (la validación definitiva se hace al reservar)
       const stockReal = Number(variant.stock || 0);
       if (stockReal < quantity) {
         return NextResponse.json(
@@ -555,6 +595,9 @@ export async function POST(request: Request) {
 
     if (itemsError) throw itemsError;
 
+    // 11. RESERVA: descontamos el stock ahora, para que nadie más lo compre
+    await reserveStockForOrder(db, order.id);
+
     return NextResponse.json(
       {
         success: true,
@@ -568,8 +611,23 @@ export async function POST(request: Request) {
   } catch (error: any) {
     console.error("🚨 [ERROR POST /api/orders]:", error);
 
-    // Si la orden se creó pero fallaron las prendas, la deshacemos
+    // Si la orden se creó pero falló algo después (prendas o reserva),
+    // la eliminamos. Como la reserva puede haber restado stock de algunas
+    // variantes, devolvemos esas unidades antes de borrar el pedido.
     if (createdOrderId) {
+      const { data: savedOrder } = await db
+        .from("orders")
+        .select("stock_reserved")
+        .eq("id", createdOrderId)
+        .maybeSingle();
+
+      if (savedOrder?.stock_reserved) {
+        await releaseStockForOrder(db, createdOrderId).catch((e: unknown) =>
+          console.error("Error liberando stock tras fallo:", e),
+        );
+      }
+
+      await db.from("order_items").delete().eq("order_id", createdOrderId);
       await db.from("orders").delete().eq("id", createdOrderId);
     }
 
