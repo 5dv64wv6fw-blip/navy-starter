@@ -1,3 +1,4 @@
+console.log("[homepage] VERSION NUEVA");
 import { NextResponse } from "next/server";
 import { createClient as createServerClient } from "@/lib/supabase/server";
 import { createClient } from "@supabase/supabase-js";
