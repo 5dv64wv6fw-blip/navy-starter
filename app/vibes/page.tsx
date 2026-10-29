@@ -5,12 +5,7 @@ import Link from "next/link";
 
 export default function VibesPage() {
   return (
-    <main
-      style={{
-        backgroundColor: "#fbfaf7", /* CAMBIO: fondo blanco */
-        minHeight: "100vh",
-      }}
-    >
+    <main style={{ minHeight: "100vh" }}>
       {/* Botón de regreso solo texto */}
       <div style={{ padding: "24px 24px 0 24px" }}>
         <Link
@@ -34,7 +29,6 @@ export default function VibesPage() {
           paddingTop: "20px",
           textAlign: "center",
           paddingBottom: "20px",
-          backgroundColor: "#ffffff", /* CAMBIO */
         }}
       >
         <div
@@ -57,8 +51,7 @@ export default function VibesPage() {
       </section>
 
       {/* Sección con el collage centrado */}
-      <section className="section" style={{ backgroundColor: "#ffffff" }}>
-        {/* CAMBIO: fondo blanco en la sección del collage */}
+      <section className="section">
         <div
           style={{
             display: "flex",
@@ -125,8 +118,7 @@ export default function VibesPage() {
         </div>
       </section>
 
-      <footer className="footer" style={{ backgroundColor: "#ffffff" }}>
-        {/* CAMBIO: fondo blanco en el footer */}
+      <footer className="footer">
         <div>
           <strong>NAVY</strong>
           <div className="muted" style={{ marginTop: 8 }}>
