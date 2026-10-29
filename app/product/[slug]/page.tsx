@@ -1112,22 +1112,7 @@ export default function ProductPage({
                       (salvo por defecto de fábrica).
                     </p>
 
-                    <Link
-                      href="/shipping-and-returns"
-                      style={{
-                        display: "inline-block",
-
-                        marginTop: "12px",
-
-                        fontSize: "12px",
-
-                        color: "#111",
-
-                        textDecoration: "underline",
-                      }}
-                    >
-                      Leer política completa →
-                    </Link>
+                    
                   </div>
                 )}
               </div>
