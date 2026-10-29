@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 // UUID de la administradora. No es secreto: la protección real es la sesión.
 const ADMIN_USER_ID = "0a09a9cd-b7ed-49ac-b69a-18dcd2dab933";
 
-// Inicialización del cliente Supabase (solo servidor)
+// Cliente público, usado solo en GET (lectura pública).
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const supabaseKey =
@@ -25,13 +25,14 @@ if (!serviceRoleKey) {
 
 const supabase = createClient(supabaseUrl, supabaseKey);
 
+// CAMBIO 1: el cliente se recibe como parámetro, con la sesión de la administradora
 // Función auxiliar: Buscar o crear categoría por nombre
-async function getOrCreateCategory(categoryName: string) {
+async function getOrCreateCategory(client: any, categoryName: string) {
   if (!categoryName) return null;
   const normalizedName = categoryName.trim();
 
   // 1. Buscar si ya existe
-  const { data: existingCategory, error: fetchError } = await supabase
+  const { data: existingCategory, error: fetchError } = await client
     .from("categories")
     .select("id")
     .ilike("name", normalizedName)
@@ -41,7 +42,7 @@ async function getOrCreateCategory(categoryName: string) {
   if (existingCategory) return existingCategory.id;
 
   // 2. Crear si no existe
-  const { data: newCategory, error: insertError } = await supabase
+  const { data: newCategory, error: insertError } = await client
     .from("categories")
     .insert({ name: normalizedName })
     .select("id")
@@ -192,6 +193,9 @@ export async function POST(req: Request) {
   const authError = await requireAdmin();
   if (authError) return authError;
 
+  // CAMBIO 2: cliente con la sesión de la administradora (RLS se aplica con su identidad)
+  const supabase = await createServerClient();
+
   let createdProductId: string | null = null;
 
   try {
@@ -229,8 +233,9 @@ export async function POST(req: Request) {
     }
 
     // 1. Obtener o crear ID de categoría
+    // CAMBIO 3: se pasa el cliente de la sesión
     const categoryId = finalCategoryName
-      ? await getOrCreateCategory(finalCategoryName)
+      ? await getOrCreateCategory(supabase, finalCategoryName)
       : null;
 
     // 2. Insertar registro principal del Producto
@@ -342,6 +347,9 @@ export async function POST(req: Request) {
 export async function PATCH(req: Request) {
   const authError = await requireAdmin();
   if (authError) return authError;
+
+  // CAMBIO 2 (PATCH): cliente con la sesión de la administradora
+  const supabase = await createServerClient();
 
   let body: any;
 
@@ -477,8 +485,9 @@ export async function PATCH(req: Request) {
           );
         }
 
+        // CAMBIO 3 (PATCH): se pasa el cliente de la sesión
         const categoryId = finalCategoryName
-          ? await getOrCreateCategory(finalCategoryName)
+          ? await getOrCreateCategory(supabase, finalCategoryName)
           : null;
 
         const { error: prodUpdateErr } = await supabase
@@ -650,6 +659,9 @@ export async function PATCH(req: Request) {
 export async function DELETE(req: Request) {
   const authError = await requireAdmin();
   if (authError) return authError;
+
+  // CAMBIO 2 (DELETE): cliente con la sesión de la administradora
+  const supabase = await createServerClient();
 
   try {
     const { searchParams } = new URL(req.url);
