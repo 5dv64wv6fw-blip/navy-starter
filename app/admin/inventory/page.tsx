@@ -1206,6 +1206,9 @@ export default function InventoryPage() {
                 <Link href="/admin/orders">Orders</Link>
 
                 <Link href="/admin/finances">Finances</Link>
+
+                {/* NUEVO */}
+                <Link href="/admin/homepage">Homepage</Link>
               </div>
             )}
           </div>
@@ -1227,6 +1230,9 @@ export default function InventoryPage() {
           >
             Orders
           </Link>
+
+          {/* NUEVO */}
+          <Link href="/admin/homepage">Homepage</Link>
         </nav>
       </header>
 
