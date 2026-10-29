@@ -139,6 +139,10 @@ export default function CartDrawer() {
           ) : (
             cart.map((item, index) => {
               const numericPrice = parsePrice(item.price);
+              // Límite de inventario para esta variante (si no viene, no limitamos en pantalla)
+              const reachedLimit =
+                item.maxStock !== undefined &&
+                item.quantity >= item.maxStock;
 
               return (
                 <div
@@ -233,6 +237,7 @@ export default function CartDrawer() {
                         alignItems: "center",
                         gap: "12px",
                         marginTop: "2px",
+                        flexWrap: "wrap",
                       }}
                     >
                       <div
@@ -286,6 +291,7 @@ export default function CartDrawer() {
 
                         <button
                           type="button"
+                          disabled={reachedLimit}
                           onClick={() =>
                             handleQuantityChange(
                               item.id,
@@ -302,15 +308,21 @@ export default function CartDrawer() {
                             display: "flex",
                             alignItems: "center",
                             justifyContent: "center",
-                            cursor: "pointer",
+                            cursor: reachedLimit ? "not-allowed" : "pointer",
                             fontSize: "14px",
-                            color: "#333",
+                            color: reachedLimit ? "#bbb" : "#333",
                             fontWeight: 500,
                           }}
                         >
                           +
                         </button>
                       </div>
+
+                      {reachedLimit && (
+                        <span style={{ fontSize: "11px", color: "#888" }}>
+                          Máximo disponible: {item.maxStock}
+                        </span>
+                      )}
 
                       <button
                         type="button"
