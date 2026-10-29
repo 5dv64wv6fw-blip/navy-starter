@@ -505,9 +505,16 @@ export default function Home() {
             <span className="eyebrow">{homepage.vibes.eyebrow}</span>
             <h2>{homepage.vibes.title}</h2>
             <p className="muted">{homepage.vibes.description}</p>
+            {/* CAMBIO: botón "Discover our vibes" con color propio */}
             <Link
               className="cta"
-              style={{ alignSelf: "flex-start", marginTop: 18 }}
+              style={{
+                alignSelf: "flex-start",
+                marginTop: 18,
+                backgroundColor: "#18333a",
+                color: "#fff",
+                border: "1px solid #18333a",
+              }}
               href="/vibes"
             >
               {homepage.vibes.buttonText}
