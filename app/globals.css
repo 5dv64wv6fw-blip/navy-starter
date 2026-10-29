@@ -260,7 +260,7 @@ button {
 
 .admin-shell {
   min-height: 100vh;
-  background: #f7f5ef;
+  background: #ffffff;
   color: #21363a;
 }
 
@@ -272,7 +272,7 @@ button {
   align-items: center;
   position: sticky;
   top: 0;
-  background: rgba(247, 245, 239, 0.95);
+  background: rgba(255, 255, 255, 0.95);
   backdrop-filter: blur(10px);
   z-index: 5;
 }
