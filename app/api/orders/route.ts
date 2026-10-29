@@ -11,7 +11,7 @@ const ORDER_SELECT = `
 `;
 
 // Estado del panel que significa "pedido cancelado"
-const CANCELLED_STATUS = "Cancelled";
+const Cancelado_STATUS = "Cancelado";
 
 /*
   Convierte una fila de la base de datos en el objeto que usa el panel.
