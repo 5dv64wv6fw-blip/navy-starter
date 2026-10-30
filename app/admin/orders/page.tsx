@@ -8,6 +8,32 @@ import { type Order } from "@/lib/orders";
 import { useAdminOrders } from "@/lib/admin-orders-context";
 
 /*
+  Campos extra que la API devuelve en cada pedido.
+  Se declaran aquí para no depender de cambios en lib/orders.
+*/
+type OrderDetails = {
+  phone?: string;
+  address?: string;
+  referencePoint?: string;
+  paymentMethod?: string;
+  notes?: string;
+  createdAt?: string;
+  subtotalUSD?: number;
+  deliveryFeeUSD?: number;
+  totalUSD?: number;
+  items?: {
+    name: string;
+    color?: string;
+    size?: string;
+    quantity: number;
+    unitPriceUSD?: number;
+    totalPriceUSD?: number;
+  }[];
+};
+
+type ExtendedOrder = Order & OrderDetails;
+
+/*
   Estos son los estados que verá Nicole
   dentro de Orders.
 */
@@ -66,9 +92,39 @@ const getOrderStage = (order: Order): string => {
   return "Entrega pendiente";
 };
 
+// Formatea montos en dólares
+const fmtUSD = (value?: number) => `$${Number(value || 0).toFixed(2)}`;
+
+// Fecha y hora en hora de Venezuela
+const fmtDateTime = (iso?: string) =>
+  iso
+    ? new Date(iso).toLocaleString("es-VE", {
+        timeZone: "America/Caracas",
+        dateStyle: "short",
+        timeStyle: "short",
+      })
+    : "";
+
+// Convierte un teléfono venezolano (0412...) en enlace de WhatsApp (58412...)
+const whatsappLink = (phone: string) => {
+  let digits = phone.replace(/\D/g, "");
+  if (digits.startsWith("0")) digits = `58${digits.slice(1)}`;
+  return `https://wa.me/${digits}`;
+};
+
 export default function OrdersPage() {
   const { orders, setOrders } = useAdminOrders();
   const [searchTerm, setSearchTerm] = useState("");
+
+  // IDs de los pedidos con el detalle desplegado
+  const [expandedIds, setExpandedIds] = useState<string[]>([]);
+
+  const toggleDetails = (id: string) => {
+    setExpandedIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
+    );
+  };
+
   /*
     Cambia la parte correcta del pedido
     dependiendo de la etapa seleccionada.
@@ -187,7 +243,9 @@ export default function OrdersPage() {
     }
 
     /*
-    Pedido cancelado
+    Pedido cancelado.
+    OJO: este valor es el que guarda la base de datos.
+    El texto que ve la usuaria es "Cancelado", pero el valor es "Cancelled".
   */
     if (newStage === "Cancelado") {
       update = {
@@ -353,7 +411,10 @@ export default function OrdersPage() {
                 }}
               >
                 {ordersInThisStage.map((order) => {
+                  const o = order as ExtendedOrder;
                   const isCancelled = order.orderStatus === "Cancelled";
+                  const isExpanded = expandedIds.includes(order.id);
+                  const items = o.items || [];
 
                   return (
                     <article
@@ -392,6 +453,18 @@ export default function OrdersPage() {
                             {order.id} · {order.name}
                           </div>
 
+                          {o.createdAt && (
+                            <div
+                              style={{
+                                fontSize: "11px",
+                                color: "#777",
+                                marginTop: "4px",
+                              }}
+                            >
+                              🕒 {fmtDateTime(o.createdAt)}
+                            </div>
+                          )}
+
                           {order.deliveryTime && (
                             <div
                               style={{
@@ -425,33 +498,226 @@ export default function OrdersPage() {
                           gap: "4px",
                         }}
                       >
-                        <span
-                          className="status"
-                          style={{
-                            fontSize: "11px",
-                          }}
-                        >
+                        <span className="status" style={{ fontSize: "11px" }}>
                           Payment: {order.paymentStatus}
                         </span>
 
-                        <span
-                          className="status"
-                          style={{
-                            fontSize: "11px",
-                          }}
-                        >
+                        <span className="status" style={{ fontSize: "11px" }}>
                           Preparation: {order.preparationStatus}
                         </span>
 
-                        <span
-                          className="status"
-                          style={{
-                            fontSize: "11px",
-                          }}
-                        >
+                        <span className="status" style={{ fontSize: "11px" }}>
                           Delivery: {order.deliveryStatus}
                         </span>
                       </div>
+
+                      {/* BOTÓN DETALLE */}
+
+                      <div>
+                        <button
+                          type="button"
+                          onClick={() => toggleDetails(order.id)}
+                          style={{
+                            padding: "6px 10px",
+                            border: "1px solid var(--line)",
+                            borderRadius: 6,
+                            background: "#fff",
+                            cursor: "pointer",
+                            fontSize: 12,
+                          }}
+                        >
+                          {isExpanded ? "Ocultar detalle ▲" : "Ver detalle ▼"}
+                        </button>
+                      </div>
+
+                      {/* DETALLE DESPLEGABLE */}
+
+                      {isExpanded && (
+                        <div
+                          style={{
+                            borderTop: "1px solid var(--line)",
+                            paddingTop: 12,
+                            display: "grid",
+                            gap: 16,
+                            fontSize: 13,
+                          }}
+                        >
+                          {/* CLIENTA */}
+                          <div>
+                            <div
+                              style={{
+                                fontSize: 11,
+                                textTransform: "uppercase",
+                                letterSpacing: "0.08em",
+                                opacity: 0.7,
+                                marginBottom: 6,
+                              }}
+                            >
+                              Clienta
+                            </div>
+
+                            <div>
+                              <strong>{order.name}</strong>
+                            </div>
+
+                            {o.phone && (
+                              <div style={{ marginTop: 4 }}>
+                                📱 {o.phone} ·{" "}
+                                <a
+                                  href={whatsappLink(o.phone)}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  style={{
+                                    color: "#1e5c22",
+                                    textDecoration: "underline",
+                                  }}
+                                >
+                                  Escribir por WhatsApp
+                                </a>
+                              </div>
+                            )}
+
+                            {o.address && (
+                              <div style={{ marginTop: 4 }}>📍 {o.address}</div>
+                            )}
+
+                            {o.referencePoint && (
+                              <div style={{ marginTop: 4 }}>
+                                Referencia: {o.referencePoint}
+                              </div>
+                            )}
+                          </div>
+
+                          {/* PRENDAS */}
+                          <div>
+                            <div
+                              style={{
+                                fontSize: 11,
+                                textTransform: "uppercase",
+                                letterSpacing: "0.08em",
+                                opacity: 0.7,
+                                marginBottom: 6,
+                              }}
+                            >
+                              Prendas
+                            </div>
+
+                            {items.length === 0 ? (
+                              <div style={{ color: "#888" }}>
+                                Sin prendas registradas.
+                              </div>
+                            ) : (
+                              <table
+                                style={{
+                                  width: "100%",
+                                  borderCollapse: "collapse",
+                                  fontSize: 12,
+                                }}
+                              >
+                                <thead>
+                                  <tr
+                                    style={{
+                                      textAlign: "left",
+                                      borderBottom: "1px solid var(--line)",
+                                    }}
+                                  >
+                                    <th style={{ padding: "4px 0" }}>Prenda</th>
+                                    <th>Color</th>
+                                    <th>Talla</th>
+                                    <th>Cant.</th>
+                                    <th style={{ textAlign: "right" }}>
+                                      Total
+                                    </th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {items.map((item, index) => (
+                                    <tr
+                                      key={`${item.name}-${index}`}
+                                      style={{
+                                        borderBottom: "1px solid #f0f0f0",
+                                      }}
+                                    >
+                                      <td style={{ padding: "6px 0" }}>
+                                        {item.name}
+                                      </td>
+                                      <td>{item.color || "—"}</td>
+                                      <td>{item.size || "—"}</td>
+                                      <td>{item.quantity}</td>
+                                      <td style={{ textAlign: "right" }}>
+                                        {fmtUSD(item.totalPriceUSD)}
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            )}
+                          </div>
+
+                          {/* TOTALES Y PAGO */}
+                          <div
+                            style={{
+                              display: "grid",
+                              gap: 4,
+                              background: "#faf9f6",
+                              padding: 10,
+                              borderRadius: 6,
+                            }}
+                          >
+                            <div
+                              style={{
+                                display: "flex",
+                                justifyContent: "space-between",
+                              }}
+                            >
+                              <span>Subtotal prendas</span>
+                              <span>{fmtUSD(o.subtotalUSD)}</span>
+                            </div>
+
+                            <div
+                              style={{
+                                display: "flex",
+                                justifyContent: "space-between",
+                              }}
+                            >
+                              <span>Delivery</span>
+                              <span>{fmtUSD(o.deliveryFeeUSD)}</span>
+                            </div>
+
+                            <div
+                              style={{
+                                display: "flex",
+                                justifyContent: "space-between",
+                                fontWeight: 700,
+                                borderTop: "1px solid var(--line)",
+                                paddingTop: 4,
+                              }}
+                            >
+                              <span>Total</span>
+                              <span>{fmtUSD(o.totalUSD)}</span>
+                            </div>
+
+                            {o.paymentMethod && (
+                              <div style={{ marginTop: 4, opacity: 0.8 }}>
+                                Método de pago: {o.paymentMethod}
+                              </div>
+                            )}
+                          </div>
+
+                          {/* NOTAS */}
+                          {o.notes && (
+                            <div
+                              style={{
+                                fontSize: 12,
+                                color: "#555",
+                                lineHeight: 1.5,
+                              }}
+                            >
+                              <strong>Notas:</strong> {o.notes}
+                            </div>
+                          )}
+                        </div>
+                      )}
 
                       {/* CHANGE STAGE */}
 
@@ -483,7 +749,7 @@ export default function OrdersPage() {
                             borderRadius: "6px",
                             border: "1px solid var(--line)",
                             fontSize: "12px",
-                            backgroundColor: "var(--cream)",
+                            backgroundColor: "#fff",
                             cursor: "pointer",
                             fontWeight: 500,
                           }}
