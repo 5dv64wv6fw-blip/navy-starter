@@ -1,3 +1,4 @@
+
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
@@ -34,7 +35,10 @@ const categoryLabels: Record<Movement["category"], string> = {
 function monthLabel(key: string) {
   const [year, month] = key.split("-").map(Number);
   const date = new Date(year, month - 1, 1);
-  return date.toLocaleDateString("es-VE", { month: "long", year: "numeric" });
+  return date.toLocaleDateString("es-VE", {
+    month: "long",
+    year: "numeric",
+  });
 }
 
 function currentMonthKey() {
@@ -47,7 +51,8 @@ export default function FinancesPage() {
   const [loading, setLoading] = useState(true);
   const [selectedMonth, setSelectedMonth] = useState(currentMonthKey());
 
-  const [category, setCategory] = useState<Movement["category"]>("gasto");
+  const [category, setCategory] =
+    useState<Movement["category"]>("gasto");
   const [description, setDescription] = useState("");
   const [amount, setAmount] = useState<number | "">("");
   const [movementDate, setMovementDate] = useState(
@@ -57,11 +62,15 @@ export default function FinancesPage() {
 
   const loadFinances = async () => {
     try {
-      const res = await fetch("/api/finances", { cache: "no-store" });
+      const res = await fetch("/api/finances", {
+        cache: "no-store",
+      });
       const data = await res.json();
 
       if (!res.ok || !data.success) {
-        throw new Error(data.error || "No se pudieron cargar las finanzas");
+        throw new Error(
+          data.error || "No se pudieron cargar las finanzas",
+        );
       }
 
       setMonthly(data.monthly || []);
@@ -77,11 +86,14 @@ export default function FinancesPage() {
     loadFinances();
   }, []);
 
-  // Meses con datos, más el mes actual aunque todavía no tenga nada
+  // Meses con datos, más el mes actual aunque todavía no tenga nada.
   const availableMonths = useMemo(() => {
     const keys = new Set(monthly.map((m) => m.month));
     keys.add(currentMonthKey());
-    return Array.from(keys).sort((a, b) => b.localeCompare(a));
+
+    return Array.from(keys).sort((a, b) =>
+      b.localeCompare(a),
+    );
   }, [monthly]);
 
   const currentSummary: MonthSummary = monthly.find(
@@ -106,7 +118,11 @@ export default function FinancesPage() {
   const addMovement = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!description.trim() || amount === "" || Number(amount) <= 0) {
+    if (
+      !description.trim() ||
+      amount === "" ||
+      Number(amount) <= 0
+    ) {
       alert("Completa la descripción y un monto mayor a 0.");
       return;
     }
@@ -116,7 +132,9 @@ export default function FinancesPage() {
     try {
       const res = await fetch("/api/finances", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+        },
         body: JSON.stringify({
           category,
           description: description.trim(),
@@ -128,7 +146,9 @@ export default function FinancesPage() {
       const data = await res.json();
 
       if (!res.ok || !data.success) {
-        throw new Error(data.error || "No se pudo guardar el movimiento");
+        throw new Error(
+          data.error || "No se pudo guardar el movimiento",
+        );
       }
 
       setDescription("");
@@ -149,9 +169,13 @@ export default function FinancesPage() {
     if (!confirm("¿Eliminar este movimiento?")) return;
 
     try {
-      const res = await fetch(`/api/finances?id=${encodeURIComponent(id)}`, {
-        method: "DELETE",
-      });
+      const res = await fetch(
+        `/api/finances?id=${encodeURIComponent(id)}`,
+        {
+          method: "DELETE",
+        },
+      );
+
       const data = await res.json();
 
       if (!res.ok || !data.success) {
@@ -160,7 +184,11 @@ export default function FinancesPage() {
 
       await loadFinances();
     } catch (error) {
-      alert(error instanceof Error ? error.message : "No se pudo eliminar");
+      alert(
+        error instanceof Error
+          ? error.message
+          : "No se pudo eliminar",
+      );
     }
   };
 
@@ -185,7 +213,13 @@ export default function FinancesPage() {
           paddingBottom: 12,
         }}
       >
-        <div style={{ display: "flex", gap: 16, alignItems: "center" }}>
+        <div
+          style={{
+            display: "flex",
+            gap: 16,
+            alignItems: "center",
+          }}
+        >
           <Link
             href="/admin"
             style={{
@@ -211,12 +245,18 @@ export default function FinancesPage() {
           marginBottom: 20,
         }}
       >
-        <h1 style={{ fontSize: 24, margin: 0 }}>Finanzas</h1>
+        <h1 style={{ fontSize: 24, margin: 0 }}>
+          Finanzas
+        </h1>
 
         <select
           value={selectedMonth}
           onChange={(e) => setSelectedMonth(e.target.value)}
-          style={{ ...inputStyle, width: "auto", marginTop: 0 }}
+          style={{
+            ...inputStyle,
+            width: "auto",
+            marginTop: 0,
+          }}
         >
           {availableMonths.map((key) => (
             <option key={key} value={key}>
@@ -234,20 +274,35 @@ export default function FinancesPage() {
           <div
             style={{
               display: "grid",
-              gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))",
+              gridTemplateColumns:
+                "repeat(auto-fit,minmax(150px,1fr))",
               gap: 12,
               marginBottom: 20,
             }}
           >
-            <Card label="Ventas de prendas" value={currentSummary.ventas} />
-            <Card label="Delivery cobrado" value={currentSummary.delivery} />
-            <Card label="Costos" value={currentSummary.costos} negative />
+            <Card
+              label="Ventas de prendas"
+              value={currentSummary.ventas}
+            />
+            <Card
+              label="Delivery cobrado"
+              value={currentSummary.delivery}
+            />
+            <Card
+              label="Costos"
+              value={currentSummary.costos}
+              negative
+            />
             <Card
               label="Ganancia bruta"
               value={currentSummary.gananciaBruta}
               highlight
             />
-            <Card label="Gastos" value={currentSummary.gastos} negative />
+            <Card
+              label="Gastos"
+              value={currentSummary.gastos}
+              negative
+            />
             <Card
               label="Ganancia neta"
               value={currentSummary.gananciaNeta}
@@ -265,21 +320,6 @@ export default function FinancesPage() {
             />
           </div>
 
-          <p
-            style={{
-              fontSize: 12,
-              color: "#888",
-              marginTop: -8,
-              marginBottom: 24,
-            }}
-          >
-            {currentSummary.pedidos} pedido
-            {currentSummary.pedidos !== 1 ? "s" : ""} con pago confirmado este
-            mes. Ganancia neta = ventas − costos − gastos. Reinversión y pagos a
-            Nicole no se restan de la ganancia; son movimientos del dinero ya
-            ganado.
-          </p>
-
           {/* AGREGAR MOVIMIENTO */}
           <section
             style={{
@@ -290,7 +330,12 @@ export default function FinancesPage() {
               background: "#faf9f6",
             }}
           >
-            <h3 style={{ marginTop: 0, fontSize: 15 }}>
+            <h3
+              style={{
+                marginTop: 0,
+                fontSize: 15,
+              }}
+            >
               Registrar gasto, reinversión o pago a Nicole
             </h3>
 
@@ -298,38 +343,53 @@ export default function FinancesPage() {
               onSubmit={addMovement}
               style={{
                 display: "grid",
-                gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))",
+                gridTemplateColumns:
+                  "repeat(auto-fit,minmax(150px,1fr))",
                 gap: 10,
                 alignItems: "end",
               }}
             >
               <div>
-                <label style={labelStyle}>Categoría</label>
+                <label style={labelStyle}>
+                  Categoría
+                </label>
                 <select
                   value={category}
                   onChange={(e) =>
-                    setCategory(e.target.value as Movement["category"])
+                    setCategory(
+                      e.target.value as Movement["category"],
+                    )
                   }
                   style={inputStyle}
                 >
                   <option value="gasto">Gasto</option>
-                  <option value="reinversion">Reinversión</option>
-                  <option value="retiro_nicole">Pago a Nicole</option>
+                  <option value="reinversion">
+                    Reinversión
+                  </option>
+                  <option value="retiro_nicole">
+                    Pago a Nicole
+                  </option>
                 </select>
               </div>
 
               <div style={{ gridColumn: "span 2" }}>
-                <label style={labelStyle}>Descripción</label>
+                <label style={labelStyle}>
+                  Descripción
+                </label>
                 <input
                   value={description}
-                  onChange={(e) => setDescription(e.target.value)}
+                  onChange={(e) =>
+                    setDescription(e.target.value)
+                  }
                   placeholder="Ej. Publicidad Instagram"
                   style={inputStyle}
                 />
               </div>
 
               <div>
-                <label style={labelStyle}>Monto USD</label>
+                <label style={labelStyle}>
+                  Monto USD
+                </label>
                 <input
                   type="number"
                   min="0"
@@ -337,7 +397,9 @@ export default function FinancesPage() {
                   value={amount}
                   onChange={(e) =>
                     setAmount(
-                      e.target.value === "" ? "" : Number(e.target.value),
+                      e.target.value === ""
+                        ? ""
+                        : Number(e.target.value),
                     )
                   }
                   style={inputStyle}
@@ -345,11 +407,15 @@ export default function FinancesPage() {
               </div>
 
               <div>
-                <label style={labelStyle}>Fecha</label>
+                <label style={labelStyle}>
+                  Fecha
+                </label>
                 <input
                   type="date"
                   value={movementDate}
-                  onChange={(e) => setMovementDate(e.target.value)}
+                  onChange={(e) =>
+                    setMovementDate(e.target.value)
+                  }
                   style={inputStyle}
                 />
               </div>
@@ -364,7 +430,9 @@ export default function FinancesPage() {
                   background: "#18333a",
                   color: "#fff",
                   fontWeight: 600,
-                  cursor: isSaving ? "default" : "pointer",
+                  cursor: isSaving
+                    ? "default"
+                    : "pointer",
                   opacity: isSaving ? 0.7 : 1,
                 }}
               >
@@ -380,11 +448,22 @@ export default function FinancesPage() {
             </h3>
 
             {monthMovements.length === 0 ? (
-              <p style={{ color: "#888", fontSize: 13 }}>
+              <p
+                style={{
+                  color: "#888",
+                  fontSize: 13,
+                }}
+              >
                 No hay movimientos registrados este mes.
               </p>
             ) : (
-              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              <div
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 8,
+                }}
+              >
                 {monthMovements.map((m) => (
                   <div
                     key={m.id}
@@ -411,16 +490,30 @@ export default function FinancesPage() {
                       >
                         {categoryLabels[m.category]}
                       </span>
+
                       {m.description}
-                      <span style={{ color: "#999", marginLeft: 8 }}>
+
+                      <span
+                        style={{
+                          color: "#999",
+                          marginLeft: 8,
+                        }}
+                      >
                         {m.movement_date}
                       </span>
                     </div>
 
                     <div
-                      style={{ display: "flex", alignItems: "center", gap: 10 }}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 10,
+                      }}
                     >
-                      <strong>${Number(m.amount_usd).toFixed(2)}</strong>
+                      <strong>
+                        ${Number(m.amount_usd).toFixed(2)}
+                      </strong>
+
                       <button
                         onClick={() => deleteMovement(m.id)}
                         style={{
@@ -469,16 +562,24 @@ function Card({
         padding: 14,
       }}
     >
-      <small style={{ color: "#777" }}>{label}</small>
+      <small style={{ color: "#777" }}>
+        {label}
+      </small>
+
       <strong
         style={{
           display: "block",
           fontSize: 18,
           marginTop: 4,
-          color: muted ? "#888" : negative ? "#d32f2f" : "#18333a",
+          color: muted
+            ? "#888"
+            : negative
+              ? "#d32f2f"
+              : "#18333a",
         }}
       >
-        {negative && value > 0 ? "-" : ""}${value.toFixed(2)}
+        {negative && value > 0 ? "-" : ""}$
+        {value.toFixed(2)}
       </strong>
     </div>
   );
