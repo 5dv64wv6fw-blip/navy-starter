@@ -1,11 +1,15 @@
+
 import "./globals.css";
 import type { Metadata } from "next";
 import { CartProvider } from "./context/CartContext";
-import CartDrawer from "./components/CartDrawer"; // <-- 1. Importamos el cajón
+import CartDrawer from "./components/CartDrawer";
 
 export const metadata: Metadata = {
   title: "Navy Clothing Store",
   description: "European coastal clothing for the Navy girl.",
+  icons: {
+    icon: "/icon.svg",
+  },
 };
 
 export default function RootLayout({
@@ -18,8 +22,7 @@ export default function RootLayout({
       <body>
         <CartProvider>
           {children}
-          <CartDrawer />{" "}
-          {/* <-- 2. Lo colocamos aquí para que viva en toda la web */}
+          <CartDrawer />
         </CartProvider>
       </body>
     </html>
