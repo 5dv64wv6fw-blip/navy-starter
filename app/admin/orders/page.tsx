@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import AdminMenu from "@/components/admin/AdminMenu";
 
@@ -8,8 +8,7 @@ import { type Order } from "@/lib/orders";
 import { useAdminOrders } from "@/lib/admin-orders-context";
 
 /*
-  Campos extra que la API devuelve en cada pedido.
-  Se declaran aquí para no depender de cambios en lib/orders.
+  Campos extra que la API devuelve en cada pedido (ver mapOrder en /api/orders).
 */
 type OrderDetails = {
   phone?: string;
@@ -34,8 +33,7 @@ type OrderDetails = {
 type ExtendedOrder = Order & OrderDetails;
 
 /*
-  Estos son los estados que verá Nicole
-  dentro de Orders.
+  Estados que verá Nicole dentro de Orders.
 */
 const ORDER_STAGES = [
   "Pago pendiente",
@@ -49,46 +47,26 @@ const ORDER_STAGES = [
   "Cancelado",
 ];
 
+// Cada cuánto revisamos si llegó un pedido nuevo
+const POLL_INTERVAL_MS = 30000;
+
 /*
-  Determina automáticamente en qué etapa
-  se encuentra cada pedido.
+  Determina automáticamente en qué etapa se encuentra cada pedido.
 */
 const getOrderStage = (order: Order): string => {
-  if (order.orderStatus === "Cancelled") {
-    return "Cancelado";
-  }
-
-  if (order.paymentStatus === "Pending") {
-    return "Pago pendiente";
-  }
-
-  if (order.paymentStatus === "Rejected") {
-    return "Pago pendiente";
-  }
-
-  if (order.preparationStatus === "Pending") {
-    return "Pendiente de empacar";
-  }
-
+  if (order.orderStatus === "Cancelled") return "Cancelado";
+  if (order.paymentStatus === "Pending") return "Pago pendiente";
+  if (order.paymentStatus === "Rejected") return "Pago pendiente";
+  if (order.preparationStatus === "Pending") return "Pendiente de empacar";
   if (
     order.preparationStatus === "Packed" &&
     order.deliveryStatus === "Pending"
   ) {
     return "Entrega pendiente";
   }
-
-  if (order.deliveryStatus === "Coordinated") {
-    return "Coordinada";
-  }
-
-  if (order.deliveryStatus === "On the way") {
-    return "En camino";
-  }
-
-  if (order.deliveryStatus === "Delivered") {
-    return "Entregado";
-  }
-
+  if (order.deliveryStatus === "Coordinated") return "Coordinada";
+  if (order.deliveryStatus === "On the way") return "En camino";
+  if (order.deliveryStatus === "Delivered") return "Entregado";
   return "Entrega pendiente";
 };
 
@@ -105,6 +83,19 @@ const fmtDateTime = (iso?: string) =>
       })
     : "";
 
+// Fecha (AAAA-MM-DD) en hora de Venezuela, a partir de una marca UTC
+const caracasDay = (iso?: string): string => {
+  if (!iso) return "";
+  const date = new Date(iso);
+  if (isNaN(date.getTime())) return "";
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Caracas",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(date);
+};
+
 // Convierte un teléfono venezolano (0412...) en enlace de WhatsApp (58412...)
 const whatsappLink = (phone: string) => {
   let digits = phone.replace(/\D/g, "");
@@ -112,17 +103,276 @@ const whatsappLink = (phone: string) => {
   return `https://wa.me/${digits}`;
 };
 
+// Sonido corto generado en el navegador (no necesita archivos)
+function playBeep() {
+  try {
+    const Ctx = window.AudioContext || (window as any).webkitAudioContext;
+    const ctx = new Ctx();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.frequency.value = 880;
+    gain.gain.value = 0.2;
+    osc.start();
+    osc.stop(ctx.currentTime + 0.4);
+  } catch {
+    // Si el navegador bloquea el audio, seguimos sin sonido
+  }
+}
+
+// Escapa un valor para CSV (comillas si tiene ; comillas o saltos de línea)
+const csvCell = (value: unknown) => {
+  const text = value === undefined || value === null ? "" : String(value);
+  return `"${text.replace(/"/g, '""')}"`;
+};
+
 export default function OrdersPage() {
   const { orders, setOrders } = useAdminOrders();
-  const [searchTerm, setSearchTerm] = useState("");
 
-  // IDs de los pedidos con el detalle desplegado
+  // Guardamos setOrders en una ref para que el intervalo no se reinicie en cada render
+  const setOrdersRef = useRef(setOrders);
+  setOrdersRef.current = setOrders;
+
+  const [searchTerm, setSearchTerm] = useState("");
   const [expandedIds, setExpandedIds] = useState<string[]>([]);
+
+  // Avisos de pedidos nuevos
+  const [newOrdersCount, setNewOrdersCount] = useState(0);
+  const [alertsEnabled, setAlertsEnabled] = useState(false);
+  const alertsRef = useRef(false);
+  const seenIdsRef = useRef<Set<string> | null>(null);
+  const originalTitleRef = useRef("");
+
+  // Exportación por mes
+  const [exportMonth, setExportMonth] = useState("");
 
   const toggleDetails = (id: string) => {
     setExpandedIds((prev) =>
       prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
     );
+  };
+
+  /*
+    AVISOS: revisa la API cada 30 segundos.
+    La primera vez solo guarda los pedidos que ya existen,
+    para no avisar de pedidos viejos al abrir la página.
+  */
+  useEffect(() => {
+    let cancelled = false;
+
+    const notifyNewOrders = (newOnes: ExtendedOrder[]) => {
+      playBeep();
+
+      if (
+        typeof Notification !== "undefined" &&
+        Notification.permission === "granted"
+      ) {
+        new Notification("Nuevo pedido en Navy", {
+          body: newOnes.map((o) => `${o.id} · ${o.name}`).join("\n"),
+          icon: "/navy-logo.png",
+        });
+      }
+    };
+
+    const checkOrders = async () => {
+      try {
+        const res = await fetch("/api/orders", { cache: "no-store" });
+        if (!res.ok) return;
+
+        const data = await res.json();
+        if (!data.success || cancelled) return;
+
+        const incoming = data.orders as ExtendedOrder[];
+
+        // Mantenemos la lista al día (cambios de estado hechos desde otro lugar)
+        setOrdersRef.current(incoming);
+
+        const seen = seenIdsRef.current;
+
+        if (seen === null) {
+          seenIdsRef.current = new Set(incoming.map((o) => o.id));
+          return;
+        }
+
+        const newOnes = incoming.filter((o) => !seen.has(o.id));
+        if (newOnes.length === 0) return;
+
+        newOnes.forEach((o) => seen.add(o.id));
+        setNewOrdersCount((c) => c + newOnes.length);
+
+        if (alertsRef.current) notifyNewOrders(newOnes);
+      } catch {
+        // Si falla una revisión, la siguiente vuelve a intentarlo
+      }
+    };
+
+    checkOrders();
+    const timer = setInterval(checkOrders, POLL_INTERVAL_MS);
+
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, []);
+
+  // Muestra el número de pedidos nuevos en la pestaña del navegador
+  useEffect(() => {
+    if (!originalTitleRef.current) {
+      originalTitleRef.current = document.title;
+    }
+    document.title =
+      newOrdersCount > 0
+        ? `(${newOrdersCount}) ${originalTitleRef.current}`
+        : originalTitleRef.current;
+  }, [newOrdersCount]);
+
+  // Se llama con un clic: pide permiso de notificaciones y desbloquea el sonido
+  const enableAlerts = async () => {
+    try {
+      if (
+        typeof Notification !== "undefined" &&
+        Notification.permission !== "granted"
+      ) {
+        await Notification.requestPermission();
+      }
+    } catch {
+      // Sin permiso seguimos con el aviso visual y el sonido
+    }
+
+    playBeep();
+    alertsRef.current = true;
+    setAlertsEnabled(true);
+  };
+
+  /*
+    Meses disponibles para exportar (a partir de los pedidos cargados)
+  */
+  const monthOptions = useMemo(() => {
+    const set = new Set<string>();
+    (orders as ExtendedOrder[]).forEach((o) => {
+      const key = caracasDay(o.createdAt).slice(0, 7);
+      if (key) set.add(key);
+    });
+    return [...set].sort((a, b) => b.localeCompare(a));
+  }, [orders]);
+
+  // Por defecto, el mes más reciente
+  useEffect(() => {
+    if (!exportMonth && monthOptions.length > 0) {
+      setExportMonth(monthOptions[0]);
+    }
+  }, [monthOptions, exportMonth]);
+
+  const monthLabel = (key: string) => {
+    const [y, m] = key.split("-").map(Number);
+    return new Date(y, m - 1, 1).toLocaleDateString("es-VE", {
+      month: "long",
+      year: "numeric",
+    });
+  };
+
+  /*
+    EXPORTAR: genera un CSV (abre directamente en Excel) con una fila por prenda.
+    Usa ";" como separador y BOM UTF-8 para que Excel en español muestre bien las tildes.
+  */
+  const exportToExcel = () => {
+    if (!exportMonth) {
+      alert("Selecciona un mes para exportar.");
+      return;
+    }
+
+    const monthOrders = (orders as ExtendedOrder[]).filter(
+      (o) => caracasDay(o.createdAt).slice(0, 7) === exportMonth,
+    );
+
+    if (monthOrders.length === 0) {
+      alert("No hay pedidos en ese mes.");
+      return;
+    }
+
+    const headers = [
+      "Pedido",
+      "Fecha",
+      "Clienta",
+      "Teléfono",
+      "Entrega",
+      "Dirección",
+      "Referencia",
+      "Método de pago",
+      "Estado pago",
+      "Estado pedido",
+      "Prenda",
+      "Color",
+      "Talla",
+      "Cantidad",
+      "Precio unitario USD",
+      "Total prenda USD",
+      "Subtotal USD",
+      "Delivery USD",
+      "Total pedido USD",
+      "Notas",
+    ];
+
+    const lines: string[] = [headers.map(csvCell).join(";")];
+
+    for (const o of monthOrders) {
+      const base = [
+        o.id,
+        fmtDateTime(o.createdAt),
+        o.name,
+        o.phone || "",
+        o.address ? "Delivery" : "Pick Up",
+        o.address || "",
+        o.referencePoint || "",
+        o.paymentMethod || "",
+        o.paymentStatus,
+        o.orderStatus === "Cancelled" ? "Cancelado" : o.orderStatus,
+      ];
+
+      const tail = [
+        o.subtotalUSD ?? "",
+        o.deliveryFeeUSD ?? "",
+        o.totalUSD ?? "",
+        o.notes || "",
+      ];
+
+      const items = o.items || [];
+
+      if (items.length === 0) {
+        lines.push([...base, "", "", "", "", "", "", ...tail].map(csvCell).join(";"));
+        continue;
+      }
+
+      for (const item of items) {
+        lines.push(
+          [
+            ...base,
+            item.name,
+            item.color || "",
+            item.size || "",
+            item.quantity,
+            item.unitPriceUSD ?? "",
+            item.totalPriceUSD ?? "",
+            ...tail,
+          ]
+            .map(csvCell)
+            .join(";"),
+        );
+      }
+    }
+
+    const blob = new Blob(["\uFEFF" + lines.join("\r\n")], {
+      type: "text/csv;charset=utf-8",
+    });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `pedidos-${exportMonth}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
   };
 
   /*
@@ -132,10 +382,6 @@ export default function OrdersPage() {
   const handleStageChange = async (orderId: string, newStage: string) => {
     let deliveryTime = "";
 
-    /*
-    Si seleccionamos "Coordinada",
-    preguntamos cuándo será la entrega.
-  */
     if (newStage === "Coordinada") {
       const userInput = window.prompt(
         "¿Para qué día y hora coordinaste esta entrega? (Ej: Mañana 3:00 PM)",
@@ -150,29 +396,14 @@ export default function OrdersPage() {
 
     let update: Partial<Order> = {};
 
-    /*
-    Pago pendiente
-  */
     if (newStage === "Pago pendiente") {
-      update = {
-        orderStatus: "Active",
-        paymentStatus: "Pending",
-      };
+      update = { orderStatus: "Active", paymentStatus: "Pending" };
     }
 
-    /*
-    Pago confirmado
-  */
     if (newStage === "Pago confirmado") {
-      update = {
-        orderStatus: "Active",
-        paymentStatus: "Confirmed",
-      };
+      update = { orderStatus: "Active", paymentStatus: "Confirmed" };
     }
 
-    /*
-    Pendiente de empacar
-  */
     if (newStage === "Pendiente de empacar") {
       update = {
         orderStatus: "Active",
@@ -181,9 +412,6 @@ export default function OrdersPage() {
       };
     }
 
-    /*
-    Empacado
-  */
     if (newStage === "Empacado") {
       update = {
         orderStatus: "Active",
@@ -192,9 +420,6 @@ export default function OrdersPage() {
       };
     }
 
-    /*
-    Entrega pendiente
-  */
     if (newStage === "Entrega pendiente") {
       update = {
         orderStatus: "Active",
@@ -205,9 +430,6 @@ export default function OrdersPage() {
       };
     }
 
-    /*
-    Entrega coordinada
-  */
     if (newStage === "Coordinada") {
       update = {
         orderStatus: "Active",
@@ -218,9 +440,6 @@ export default function OrdersPage() {
       };
     }
 
-    /*
-    Pedido en camino
-  */
     if (newStage === "En camino") {
       update = {
         orderStatus: "Active",
@@ -230,9 +449,6 @@ export default function OrdersPage() {
       };
     }
 
-    /*
-    Pedido entregado
-  */
     if (newStage === "Entregado") {
       update = {
         orderStatus: "Active",
@@ -242,31 +458,18 @@ export default function OrdersPage() {
       };
     }
 
-    /*
-    Pedido cancelado.
-    OJO: este valor es el que guarda la base de datos.
-    El texto que ve la usuaria es "Cancelado", pero el valor es "Cancelled".
-  */
+    // OJO: la base de datos guarda "Cancelled"; la etiqueta que ves es "Cancelado"
     if (newStage === "Cancelado") {
-      update = {
-        orderStatus: "Cancelled",
-      };
+      update = { orderStatus: "Cancelled" };
     }
 
-    if (Object.keys(update).length === 0) {
-      return;
-    }
+    if (Object.keys(update).length === 0) return;
 
     try {
       const response = await fetch("/api/orders", {
         method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          orderId,
-          ...update,
-        }),
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orderId, ...update }),
       });
 
       if (!response.ok) {
@@ -279,10 +482,6 @@ export default function OrdersPage() {
         throw new Error(data.error || "Error al actualizar pedido");
       }
 
-      /*
-      Actualizamos el estado compartido
-      con la respuesta real del API.
-    */
       setOrders((prevOrders) =>
         prevOrders.map((order) => (order.id === orderId ? data.order : order)),
       );
@@ -294,7 +493,7 @@ export default function OrdersPage() {
   /*
     Buscador
   */
-  const filteredOrders = orders.filter((order) => {
+  const filteredOrders = (orders as ExtendedOrder[]).filter((order) => {
     const searchLower = searchTerm.toLowerCase();
 
     return (
@@ -314,6 +513,8 @@ export default function OrdersPage() {
           display: "flex",
           justifyContent: "space-between",
           alignItems: "center",
+          gap: 12,
+          flexWrap: "wrap",
         }}
       >
         <div
@@ -329,6 +530,14 @@ export default function OrdersPage() {
 
           <AdminMenu />
         </div>
+
+        <button
+          className="admin-btn secondary"
+          onClick={enableAlerts}
+          disabled={alertsEnabled}
+        >
+          {alertsEnabled ? "Avisos activos" : "Activar avisos de pedidos"}
+        </button>
       </header>
 
       {/* MAIN */}
@@ -338,6 +547,73 @@ export default function OrdersPage() {
           <h1>Order Management</h1>
 
           <span className="muted">Controla el flujo de cada pedido</span>
+        </div>
+
+        {/* AVISO DE PEDIDOS NUEVOS */}
+
+        {newOrdersCount > 0 && (
+          <div
+            role="status"
+            onClick={() => setNewOrdersCount(0)}
+            style={{
+              margin: "16px 0",
+              padding: "12px 16px",
+              borderRadius: 8,
+              background: "#18333a",
+              color: "#fff",
+              fontSize: 14,
+              cursor: "pointer",
+            }}
+          >
+            🛍️ Tienes {newOrdersCount} pedido(s) nuevo(s). Toca aquí para
+            cerrar este aviso.
+          </div>
+        )}
+
+        {/* EXPORTAR POR MES */}
+
+        <div
+          style={{
+            display: "flex",
+            gap: 10,
+            alignItems: "center",
+            flexWrap: "wrap",
+            margin: "16px 0",
+            padding: 12,
+            background: "#fff",
+            border: "1px solid var(--line)",
+            borderRadius: 8,
+          }}
+        >
+          <span style={{ fontSize: 13 }}>Exportar pedidos del mes:</span>
+
+          <select
+            value={exportMonth}
+            onChange={(e) => setExportMonth(e.target.value)}
+            style={{
+              padding: "6px 10px",
+              borderRadius: 6,
+              border: "1px solid var(--line)",
+              fontSize: 13,
+              background: "#fff",
+            }}
+          >
+            {monthOptions.length === 0 && <option value="">Sin pedidos</option>}
+            {monthOptions.map((key) => (
+              <option key={key} value={key}>
+                {monthLabel(key)}
+              </option>
+            ))}
+          </select>
+
+          <button
+            type="button"
+            className="admin-btn"
+            onClick={exportToExcel}
+            disabled={monthOptions.length === 0}
+          >
+            Descargar Excel (CSV)
+          </button>
         </div>
 
         {/* SEARCH */}
@@ -366,25 +642,15 @@ export default function OrdersPage() {
             (order) => getOrderStage(order) === stage,
           );
 
-          if (ordersInThisStage.length === 0) {
-            return null;
-          }
+          if (ordersInThisStage.length === 0) return null;
 
           return (
-            <div
-              key={stage}
-              style={{
-                marginBottom: "32px",
-              }}
-            >
+            <div key={stage} style={{ marginBottom: "32px" }}>
               {/* SECTION TITLE */}
 
               <div
                 className="section-label"
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                }}
+                style={{ display: "flex", justifyContent: "space-between" }}
               >
                 <span>{stage}</span>
 
@@ -404,11 +670,7 @@ export default function OrdersPage() {
               {/* ORDERS */}
 
               <div
-                style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: "12px",
-                }}
+                style={{ display: "flex", flexDirection: "column", gap: "12px" }}
               >
                 {ordersInThisStage.map((order) => {
                   const o = order as ExtendedOrder;
@@ -492,11 +754,7 @@ export default function OrdersPage() {
                       {/* ORDER DETAILS */}
 
                       <div
-                        style={{
-                          display: "flex",
-                          flexDirection: "column",
-                          gap: "4px",
-                        }}
+                        style={{ display: "flex", flexDirection: "column", gap: "4px" }}
                       >
                         <span className="status" style={{ fontSize: "11px" }}>
                           Payment: {order.paymentStatus}
@@ -625,9 +883,7 @@ export default function OrdersPage() {
                                     <th>Color</th>
                                     <th>Talla</th>
                                     <th>Cant.</th>
-                                    <th style={{ textAlign: "right" }}>
-                                      Total
-                                    </th>
+                                    <th style={{ textAlign: "right" }}>Total</th>
                                   </tr>
                                 </thead>
                                 <tbody>
@@ -731,10 +987,7 @@ export default function OrdersPage() {
                       >
                         <span
                           className="status"
-                          style={{
-                            fontSize: "11px",
-                            opacity: 0.7,
-                          }}
+                          style={{ fontSize: "11px", opacity: 0.7 }}
                         >
                           Mover a...
                         </span>
