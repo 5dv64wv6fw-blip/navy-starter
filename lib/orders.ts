@@ -18,6 +18,7 @@ export interface OrderItem {
   quantity: number;
   unitPriceUSD: number;
   totalPriceUSD: number;
+  unitCostUSD?: number;
 }
 
 export interface Order {
