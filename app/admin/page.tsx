@@ -1,3 +1,4 @@
+
 "use client";
 
 import React from "react";
@@ -7,6 +8,39 @@ import AdminMenu from "@/components/admin/AdminMenu";
 import { type Order } from "@/lib/orders";
 import { useAdminOrders } from "@/lib/admin-orders-context";
 
+// ---------------------------------------
+// FECHA ACTUAL EN ZONA HORARIA DE CARACAS
+// ---------------------------------------
+
+const CARACAS_TIMEZONE = "America/Caracas";
+
+function getCaracasDateKey(dateString?: string) {
+  if (!dateString) return "";
+
+  const date = new Date(dateString);
+
+  if (Number.isNaN(date.getTime())) return "";
+
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: CARACAS_TIMEZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
+
+  const year = parts.find((part) => part.type === "year")?.value;
+  const month = parts.find((part) => part.type === "month")?.value;
+  const day = parts.find((part) => part.type === "day")?.value;
+
+  return `${year}-${month}-${day}`;
+}
+
+function isCancelledOrder(order: Order) {
+  return ["cancelled", "cancelado"].includes(
+    String(order.orderStatus || "").toLowerCase(),
+  );
+}
+
 export default function Admin() {
   const { orders, setOrders } = useAdminOrders();
 
@@ -14,16 +48,19 @@ export default function Admin() {
     weekday: "long",
     month: "short",
     day: "numeric",
+    timeZone: CARACAS_TIMEZONE,
   };
 
   const currentDate = new Date().toLocaleDateString("en-US", dateOptions);
+
+  const todayCaracas = getCaracasDateKey(new Date().toISOString());
 
   // ---------------------------------------
   // DECIDIMOS QUÉ PEDIDOS NECESITAN ATENCIÓN
   // ---------------------------------------
 
   const attentionOrders = orders.filter((order) => {
-    if (order.orderStatus === "Cancelled") {
+    if (isCancelledOrder(order)) {
       return false;
     }
 
@@ -201,7 +238,7 @@ export default function Admin() {
 
   const todaysDeliveries = orders.filter((order) => {
     return (
-      order.orderStatus !== "Cancelled" &&
+      !isCancelledOrder(order) &&
       order.deliveryStatus === "Coordinated"
     );
   });
@@ -212,15 +249,56 @@ export default function Admin() {
 
   const newOrders = orders.filter(
     (order) =>
-      order.orderStatus !== "Cancelled" && order.paymentStatus === "Pending",
+      !isCancelledOrder(order) && order.paymentStatus === "Pending",
   ).length;
 
   const paymentsPending = orders.filter(
     (order) =>
-      order.orderStatus !== "Cancelled" && order.paymentStatus === "Pending",
+      !isCancelledOrder(order) && order.paymentStatus === "Pending",
   ).length;
 
   const deliveriesToday = todaysDeliveries.length;
+
+  // ---------------------------------------
+  // BUSINESS TODAY
+  // ---------------------------------------
+
+  // Solo pedidos de hoy, con pago confirmado y no cancelados.
+  const confirmedPaidToday = orders.filter((order) => {
+    return (
+      !isCancelledOrder(order) &&
+      order.paymentStatus === "Confirmed" &&
+      getCaracasDateKey(order.createdAt) === todayCaracas
+    );
+  });
+
+  // Ventas = prendas + delivery.
+  const salesToday = confirmedPaidToday.reduce((sum, order) => {
+    const subtotal = Number(order.subtotalUSD || 0);
+    const delivery = Number(order.deliveryFeeUSD || 0);
+
+    return sum + subtotal + delivery;
+  }, 0);
+
+  // Ganancia = subtotal - costo de prendas + delivery.
+  const profitToday = confirmedPaidToday.reduce((sum, order) => {
+    const subtotal = Number(order.subtotalUSD || 0);
+    const delivery = Number(order.deliveryFeeUSD || 0);
+
+    const garmentCost = (order.items || []).reduce((itemSum, item) => {
+      const unitCost = Number(item.unitCostUSD || 0);
+      const quantity = Number(item.quantity || 0);
+
+      return itemSum + unitCost * quantity;
+    }, 0);
+
+    return sum + subtotal - garmentCost + delivery;
+  }, 0);
+
+  const ordersToday = confirmedPaidToday.length;
+
+  const formatUSD = (amount: number) =>
+    `$${amount.toFixed(2)}`;
 
   return (
     <main className="admin-shell">
@@ -249,8 +327,6 @@ export default function Admin() {
             NAVY ADMIN
           </Link>
 
-          {/* MENU */}
-
           <div style={{ position: "relative" }}>
             <AdminMenu />
           </div>
@@ -277,7 +353,9 @@ export default function Admin() {
         <div className="admin-title">
           <h1>Good morning, Nicole</h1>
 
-          <span className="muted">What needs your attention today?</span>
+          <span className="muted">
+            What needs your attention today?
+          </span>
         </div>
 
         {/* ---------------------------------------
@@ -287,19 +365,16 @@ export default function Admin() {
         <section className="stats">
           <div className="stat">
             <span className="status">New orders</span>
-
             <b>{newOrders}</b>
           </div>
 
           <div className="stat">
             <span className="status">Payments pending</span>
-
             <b>{paymentsPending}</b>
           </div>
 
           <div className="stat">
             <span className="status">Deliveries today</span>
-
             <b>{deliveriesToday}</b>
           </div>
         </section>
@@ -314,7 +389,9 @@ export default function Admin() {
 
         {attentionOrders.length === 0 ? (
           <article className="todo">
-            <div className="order-title">You're all caught up ✨</div>
+            <div className="order-title">
+              You're all caught up ✨
+            </div>
 
             <div className="status">
               No orders need your attention right now.
@@ -329,13 +406,17 @@ export default function Admin() {
                     {order.id} · {order.name}
                   </div>
 
-                  <div className="status">Payment: {order.paymentStatus}</div>
+                  <div className="status">
+                    Payment: {order.paymentStatus}
+                  </div>
                 </div>
 
                 <strong>{order.detail.split("·").at(-1)}</strong>
               </div>
 
-              <div className="todo-meta">{getTaskText(order)}</div>
+              <div className="todo-meta">
+                {getTaskText(order)}
+              </div>
 
               <div className="todo-actions">
                 <button
@@ -366,11 +447,15 @@ export default function Admin() {
             TODAY'S DELIVERIES
         --------------------------------------- */}
 
-        <div className="section-label">Today's deliveries</div>
+        <div className="section-label">
+          Today's deliveries
+        </div>
 
         {todaysDeliveries.length === 0 ? (
           <article className="todo">
-            <div className="status">No deliveries scheduled for today.</div>
+            <div className="status">
+              No deliveries scheduled for today.
+            </div>
           </article>
         ) : (
           todaysDeliveries.map((order) => (
@@ -382,10 +467,14 @@ export default function Admin() {
                     {order.name}
                   </div>
 
-                  <div className="status">Payment: {order.paymentStatus}</div>
+                  <div className="status">
+                    Payment: {order.paymentStatus}
+                  </div>
                 </div>
 
-                <span className="status">{order.zone || "Zone pending"}</span>
+                <span className="status">
+                  {order.zone || "Zone pending"}
+                </span>
               </div>
             </article>
           ))
@@ -395,22 +484,24 @@ export default function Admin() {
             BUSINESS TODAY
         --------------------------------------- */}
 
-        <div className="section-label">Business today</div>
+        <div className="section-label">
+          Business today
+        </div>
 
         <section className="stats">
           <div className="stat">
             <span className="status">Sales</span>
-            <b>$185</b>
+            <b>{formatUSD(salesToday)}</b>
           </div>
 
           <div className="stat">
             <span className="status">Orders</span>
-            <b>{orders.length}</b>
+            <b>{ordersToday}</b>
           </div>
 
           <div className="stat">
             <span className="status">Profit</span>
-            <b>$92</b>
+            <b>{formatUSD(profitToday)}</b>
           </div>
         </section>
       </div>
