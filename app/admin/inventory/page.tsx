@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
+import AdminMenu from "@/components/admin/AdminMenu"; // CAMBIO: menú unificado
 
 interface ProductVariant {
   id: string;
@@ -43,7 +44,10 @@ interface HistoryItem {
   quantity: number;
 }
 
-const categoriesList = ["Todos", "Tops", "Bottoms", "Dresses", "Accesorios"];
+// CAMBIO: categorías reales de producto (sin "Todos" ni "Sold out")
+const productCategories = ["Tops", "Bottoms", "Dresses", "Accesorios"];
+// CAMBIO: pestañas del filtro superior
+const categoriesList = ["Todos", ...productCategories, "Sold out"];
 
 const sizesList = ["XS", "XS/S", "S", "S/M", "M", "L", "XL", "U"];
 
@@ -292,6 +296,10 @@ function normalizeProduct(raw: any): Product {
   };
 }
 
+// CAMBIO: un producto está agotado cuando la suma de sus tallas es 0
+const isSoldOut = (p: Product) =>
+  p.variants.reduce((s, v) => s + v.stock, 0) === 0;
+
 export default function InventoryPage() {
   const supabase = createClient();
 
@@ -303,11 +311,11 @@ export default function InventoryPage() {
     "inventory",
   );
 
-  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  // CAMBIO: el menú propio se eliminó; ahora lo maneja <AdminMenu />
 
   const [stockFilter, setStockFilter] = useState<
     "instock" | "outstock" | "all"
-  >("instock");
+  >("all"); // CAMBIO: por defecto "Todas" para ver también los agotados
 
   const [categoryFilter, setCategoryFilter] = useState("Todos");
 
@@ -446,14 +454,6 @@ export default function InventoryPage() {
     return roundPricesUp ? Math.ceil(calculated) : calculated;
   };
 
-  const calculatePublishedBs = (publishedDollarPrice: number) => {
-    if (!publishedDollarPrice || tasaBcv <= 0) {
-      return 0;
-    }
-
-    return publishedDollarPrice * tasaBcv;
-  };
-
   /*
     Guarda las tasas y el porcentaje.
   */
@@ -527,8 +527,9 @@ export default function InventoryPage() {
     setEditingItem(item);
 
     setFormName(item.name);
+    // CAMBIO: validamos contra las categorías reales del formulario
     setFormCategory(
-      categoriesList.includes(item.category) ? item.category : "Tops",
+      productCategories.includes(item.category) ? item.category : "Tops",
     );
 
     setFormCost(item.cost);
@@ -1083,6 +1084,7 @@ export default function InventoryPage() {
       alert("No se pudo cambiar la visibilidad. Inténtalo de nuevo.");
     }
   };
+
   /*
     Expandir variantes
   */
@@ -1094,8 +1096,12 @@ export default function InventoryPage() {
 
   /*
     Filtros
+    CAMBIO: la categoría "Sold out" muestra los productos con stock 0.
+    Los agotados siguen en el panel en cualquier otra pestaña.
   */
   const filteredInventory = inventory.filter((p) => {
+    if (categoryFilter === "Sold out") return isSoldOut(p);
+
     const total = p.variants.reduce((s, v) => s + v.stock, 0);
 
     const stockOk =
@@ -1109,6 +1115,33 @@ export default function InventoryPage() {
       stockOk && (categoryFilter === "Todos" || p.category === categoryFilter)
     );
   });
+
+  /*
+    CAMBIO: historial agrupado por mes (YYYY-MM), del más reciente al más antiguo
+  */
+  const historyByMonth = (() => {
+    const groups = new Map<string, HistoryItem[]>();
+    for (const h of history) {
+      const key = (h.arrivalDate || h.date || "").slice(0, 7);
+      if (!key) continue;
+      groups.set(key, [...(groups.get(key) || []), h]);
+    }
+    return [...groups.entries()]
+      .sort((a, b) => b[0].localeCompare(a[0]))
+      .map(([key, items]) => {
+        const [y, m] = key.split("-").map(Number);
+        const label = new Date(y, m - 1, 1).toLocaleDateString("es-VE", {
+          month: "long",
+          year: "numeric",
+        });
+        return {
+          key,
+          label,
+          items,
+          totalUnits: items.reduce((s, i) => s + i.quantity, 0),
+        };
+      });
+  })();
 
   const totalUnits = inventory.reduce(
     (s, p) => s + p.variants.reduce((x, v) => x + v.stock, 0),
@@ -1128,858 +1161,781 @@ export default function InventoryPage() {
     tasaBcv > 0 ? (((tasaBnc - tasaBcv) / tasaBcv) * 100).toFixed(1) : "0";
 
   return (
-    <main
-      style={{
-        padding: 20,
-        maxWidth: 1200,
-        margin: "0 auto",
-        fontFamily: "sans-serif",
-      }}
-    >
+    // CAMBIO: fondo blanco y estructura igual a las demás páginas admin
+    <main className="admin-shell">
       <header
+        className="admin-top"
         style={{
           display: "flex",
           justifyContent: "space-between",
           alignItems: "center",
           gap: 12,
           flexWrap: "wrap",
-          marginBottom: 20,
-          borderBottom: "1px solid #eee",
-          paddingBottom: 12,
         }}
       >
+        <Link className="admin-logo" href="/admin">
+          NAVY ADMIN
+        </Link>
+        <AdminMenu />
+      </header>
+
+      <div className="admin-main">
         <div
           style={{
             display: "flex",
-            gap: 16,
+            justifyContent: "space-between",
             alignItems: "center",
+            gap: 12,
+            flexWrap: "wrap",
+            marginBottom: 16,
           }}
         >
-          <Link
-            href="/admin"
+          <div>
+            <h1 className="admin-title" style={{ margin: 0 }}>
+              Inventory & Web Control
+            </h1>
+
+            <span className="muted" style={{ fontSize: 13 }}>
+              Navy - Clothing Store · V3
+            </span>
+          </div>
+
+          <button
+            className="admin-btn"
+            onClick={openAddModal}
+            style={{ padding: "9px 16px" }}
+          >
+            + Add Product
+          </button>
+        </div>
+
+        {/* CONFIGURACIÓN DE PRECIOS */}
+        <section
+          style={{
+            marginBottom: 20,
+            background: "#fff", // CAMBIO: antes #faf9f6
+            border: "1px solid var(--line)",
+            borderRadius: 10,
+            padding: 16,
+          }}
+        >
+          <div
             style={{
               fontWeight: 700,
-              fontSize: 18,
-              textDecoration: "none",
-              color: "#18333a",
+              marginBottom: 12,
             }}
           >
-            NAVY ADMIN
-          </Link>
+            Configuración de precios
+          </div>
 
           <div
             style={{
-              position: "relative",
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit,minmax(170px,1fr))",
+              gap: 12,
             }}
           >
-            <button
-              onClick={() => setIsMenuOpen(!isMenuOpen)}
-              style={{
-                background: "none",
-                border: 0,
-                cursor: "pointer",
-              }}
-            >
-              Menu {isMenuOpen ? "▲" : "▼"}
-            </button>
+            <div>
+              <small>Tasa BNC (Bs)</small>
 
-            {isMenuOpen && (
+              <input
+                type="number"
+                value={tasaBnc}
+                onChange={(e) => setTasaBnc(Number(e.target.value))}
+                style={inputStyle}
+              />
+            </div>
+
+            <div>
+              <small>Tasa BCV (Bs)</small>
+
+              <input
+                type="number"
+                step="0.01"
+                value={tasaBcv}
+                onChange={(e) => setTasaBcv(Number(e.target.value))}
+                style={inputStyle}
+              />
+            </div>
+
+            <div>
+              <small>Descuento pagando en $</small>
+
               <div
                 style={{
-                  position: "absolute",
-                  top: 30,
-                  background: "#fff",
-                  border: "1px solid #eee",
-                  borderRadius: 8,
-                  padding: 14,
                   display: "flex",
-                  flexDirection: "column",
-                  gap: 12,
-                  minWidth: 150,
-                  zIndex: 10,
+                  gap: 6,
+                  alignItems: "center",
                 }}
               >
-                <Link href="/admin">Inicio</Link>
+                <input
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="1"
+                  value={discountPercent}
+                  onChange={(e) =>
+                    setDiscountPercent(
+                      Math.max(0, Math.min(100, Number(e.target.value))),
+                    )
+                  }
+                  style={{
+                    ...inputStyle,
+                    marginTop: 5,
+                  }}
+                />
 
-                <Link href="/admin/inventory">Inventory</Link>
-
-                <Link href="/admin/orders">Orders</Link>
-
-                <Link href="/admin/finances">Finances</Link>
-
-                {/* NUEVO */}
-                <Link href="/admin/homepage">Homepage</Link>
+                <span>%</span>
               </div>
-            )}
-          </div>
-        </div>
+            </div>
 
-        <nav
-          style={{
-            display: "flex",
-            gap: 16,
-          }}
-        >
-          <Link href="/admin/inventory">Inventory</Link>
-
-          <Link
-            href="/admin/orders"
-            style={{
-              opacity: 0.5,
-            }}
-          >
-            Orders
-          </Link>
-
-          {/* NUEVO */}
-          <Link href="/admin/homepage">Homepage</Link>
-        </nav>
-      </header>
-
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          gap: 12,
-          flexWrap: "wrap",
-          marginBottom: 16,
-        }}
-      >
-        <div>
-          <h1
-            style={{
-              fontSize: 24,
-              margin: 0,
-            }}
-          >
-            Inventory & Web Control
-          </h1>
-
-          <span
-            style={{
-              fontSize: 13,
-              color: "#666",
-            }}
-          >
-            Navy - Clothing Store · V3
-          </span>
-        </div>
-
-        <button
-          onClick={openAddModal}
-          style={{
-            padding: "9px 16px",
-            cursor: "pointer",
-            background: "#18333a",
-            color: "#fff",
-            border: 0,
-            borderRadius: 6,
-            fontWeight: 600,
-          }}
-        >
-          + Add Product
-        </button>
-      </div>
-
-      {/* CONFIGURACIÓN DE PRECIOS */}
-      <section
-        style={{
-          marginBottom: 20,
-          background: "#fff",
-          border: "1px solid #eee",
-          borderRadius: 10,
-          padding: 16,
-        }}
-      >
-        <div
-          style={{
-            fontWeight: 700,
-            marginBottom: 12,
-          }}
-        >
-          Configuración de precios
-        </div>
-
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit,minmax(170px,1fr))",
-            gap: 12,
-          }}
-        >
-          <div>
-            <small>Tasa BNC (Bs)</small>
-
-            <input
-              type="number"
-              value={tasaBnc}
-              onChange={(e) => setTasaBnc(Number(e.target.value))}
-              style={inputStyle}
-            />
-          </div>
-
-          <div>
-            <small>Tasa BCV (Bs)</small>
-
-            <input
-              type="number"
-              step="0.01"
-              value={tasaBcv}
-              onChange={(e) => setTasaBcv(Number(e.target.value))}
-              style={inputStyle}
-            />
-          </div>
-
-          <div>
-            <small>Descuento pagando en $</small>
-
-            <div
+            <label
               style={{
                 display: "flex",
-                gap: 6,
                 alignItems: "center",
+                gap: 8,
+                fontSize: 13,
+                paddingTop: 20,
               }}
             >
               <input
-                type="number"
-                min="0"
-                max="100"
-                step="1"
-                value={discountPercent}
-                onChange={(e) =>
-                  setDiscountPercent(
-                    Math.max(0, Math.min(100, Number(e.target.value))),
-                  )
-                }
-                style={{
-                  ...inputStyle,
-                  marginTop: 5,
-                }}
+                type="checkbox"
+                checked={roundPricesUp}
+                onChange={(e) => setRoundPricesUp(e.target.checked)}
               />
-
-              <span>%</span>
-            </div>
+              Redondear hacia arriba
+            </label>
           </div>
 
-          <label
+          <button
+            onClick={saveRates}
             style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-              fontSize: 13,
-              paddingTop: 20,
+              ...primaryBtn,
+              marginTop: 16,
             }}
           >
-            <input
-              type="checkbox"
-              checked={roundPricesUp}
-              onChange={(e) => setRoundPricesUp(e.target.checked)}
-            />
-            Redondear hacia arriba
-          </label>
-        </div>
+            Guardar configuración
+          </button>
+        </section>
 
-        <button
-          onClick={saveRates}
+        {/* RESUMEN */}
+        <div
           style={{
-            ...primaryBtn,
-            marginTop: 16,
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit,minmax(140px,1fr))",
+            gap: 12,
+            marginBottom: 20,
+            background: "#fff",
+            border: "1px solid var(--line)",
+            borderRadius: 8,
+            padding: 16,
           }}
         >
-          Guardar configuración
-        </button>
-      </section>
+          <div>
+            <small>Total unidades</small>
 
-      {/* RESUMEN */}
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fit,minmax(140px,1fr))",
-          gap: 12,
-          marginBottom: 20,
-          background: "#fff",
-          border: "1px solid #eee",
-          borderRadius: 8,
-          padding: 16,
-        }}
-      >
-        <div>
-          <small>Total unidades</small>
+            <strong
+              style={{
+                display: "block",
+                fontSize: 18,
+              }}
+            >
+              {totalUnits}
+            </strong>
+          </div>
 
-          <strong
-            style={{
-              display: "block",
-              fontSize: 18,
-            }}
-          >
-            {totalUnits}
-          </strong>
+          <div>
+            <small>Diferencia entre tasas</small>
+
+            <strong
+              style={{
+                display: "block",
+                fontSize: 18,
+              }}
+            >
+              +{tasaDiff}%
+            </strong>
+          </div>
+
+          <div>
+            <small>Ganancia actual</small>
+
+            <strong
+              style={{
+                display: "block",
+                fontSize: 18,
+              }}
+            >
+              ${currentProfit.toFixed(2)}
+            </strong>
+          </div>
         </div>
 
-        <div>
-          <small>Diferencia entre tasas</small>
-
-          <strong
-            style={{
-              display: "block",
-              fontSize: 18,
-            }}
-          >
-            +{tasaDiff}%
-          </strong>
-        </div>
-
-        <div>
-          <small>Ganancia actual</small>
-
-          <strong
-            style={{
-              display: "block",
-              fontSize: 18,
-            }}
-          >
-            ${currentProfit.toFixed(2)}
-          </strong>
-        </div>
-      </div>
-
-      {/* TABS */}
-      <div
-        style={{
-          display: "flex",
-          gap: 12,
-          marginBottom: 16,
-          borderBottom: "1px solid #eee",
-          paddingBottom: 12,
-        }}
-      >
-        <button
-          onClick={() => setActiveMainTab("inventory")}
+        {/* TABS */}
+        <div
           style={{
-            border: 0,
-            background: "none",
-            fontWeight: activeMainTab === "inventory" ? 700 : 400,
-            cursor: "pointer",
+            display: "flex",
+            gap: 12,
+            marginBottom: 16,
+            borderBottom: "1px solid var(--line)",
+            paddingBottom: 12,
           }}
         >
-          Inventario Actual
-        </button>
-
-        <button
-          onClick={() => setActiveMainTab("history")}
-          style={{
-            border: 0,
-            background: "none",
-            fontWeight: activeMainTab === "history" ? 700 : 400,
-            cursor: "pointer",
-          }}
-        >
-          Historial de Entradas 📅
-        </button>
-      </div>
-
-      {activeMainTab === "inventory" ? (
-        <>
-          {/* FILTROS */}
-          <div
+          <button
+            onClick={() => setActiveMainTab("inventory")}
             style={{
-              display: "flex",
-              justifyContent: "space-between",
-              flexWrap: "wrap",
-              gap: 12,
-              marginBottom: 16,
+              border: 0,
+              background: "none",
+              fontWeight: activeMainTab === "inventory" ? 700 : 400,
+              cursor: "pointer",
             }}
           >
+            Inventario Actual
+          </button>
+
+          <button
+            onClick={() => setActiveMainTab("history")}
+            style={{
+              border: 0,
+              background: "none",
+              fontWeight: activeMainTab === "history" ? 700 : 400,
+              cursor: "pointer",
+            }}
+          >
+            Historial de Entradas 📅
+          </button>
+        </div>
+
+        {activeMainTab === "inventory" ? (
+          <>
+            {/* FILTROS */}
             <div
               style={{
                 display: "flex",
-                gap: 6,
+                justifyContent: "space-between",
                 flexWrap: "wrap",
+                gap: 12,
+                marginBottom: 16,
               }}
             >
-              {categoriesList.map((cat) => (
-                <button
-                  key={cat}
-                  onClick={() => setCategoryFilter(cat)}
-                  style={{
-                    padding: "5px 12px",
-                    borderRadius: 6,
-                    border: "1px solid #ccc",
-                    background: categoryFilter === cat ? "#18333a" : "#fff",
-                    color: categoryFilter === cat ? "#fff" : "#18333a",
-                    cursor: "pointer",
-                  }}
-                >
-                  {cat}
-                </button>
-              ))}
-            </div>
-
-            <div
-              style={{
-                display: "flex",
-                gap: 6,
-              }}
-            >
-              {(["instock", "outstock", "all"] as const).map((f) => (
-                <button
-                  key={f}
-                  onClick={() => setStockFilter(f)}
-                  style={{
-                    padding: "5px 10px",
-                    borderRadius: 6,
-                    border: "1px solid #ccc",
-                    background: stockFilter === f ? "#eef3f3" : "#fff",
-                    cursor: "pointer",
-                  }}
-                >
-                  {f === "instock"
-                    ? "Disponibles"
-                    : f === "outstock"
-                      ? "Agotadas"
-                      : "Todas"}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* PRODUCTOS */}
-          <div
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              gap: 12,
-            }}
-          >
-            {filteredInventory.length === 0 ? (
-              <p
+              <div
                 style={{
-                  textAlign: "center",
-                  color: "#888",
-                  padding: 30,
+                  display: "flex",
+                  gap: 6,
+                  flexWrap: "wrap",
                 }}
               >
-                No hay productos que coincidan con los filtros.
-              </p>
-            ) : (
-              filteredInventory.map((item) => {
-                const total = item.variants.reduce((s, v) => s + v.stock, 0);
-
-                const profit = item.price - item.cost;
-
-                const margin = item.price
-                  ? Math.round((profit / item.price) * 100)
-                  : 0;
-
-                const expanded = expandedIds.includes(item.id);
-
-                const colors = [...new Set(item.variants.map((v) => v.color))];
-
-                const sizes = [...new Set(item.variants.map((v) => v.size))];
-
-                /*
-                  Bs del precio publicado
-                */
-                const bs =
-                  tasaBcv > 0
-                    ? (item.price * tasaBcv).toLocaleString("es-VE", {
-                        maximumFractionDigits: 2,
-                      })
-                    : "0,00";
-
-                return (
-                  <article
-                    key={item.id}
+                {categoriesList.map((cat) => (
+                  <button
+                    key={cat}
+                    onClick={() => setCategoryFilter(cat)}
                     style={{
-                      background: "#fff",
-                      border: "1px solid #eee",
-                      borderRadius: 8,
-                      boxShadow: "0 1px 3px rgba(0,0,0,.05)",
-                      overflow: "hidden",
+                      padding: "5px 12px",
+                      borderRadius: 6,
+                      border: "1px solid #ccc",
+                      background: categoryFilter === cat ? "#18333a" : "#fff",
+                      color: categoryFilter === cat ? "#fff" : "#18333a",
+                      cursor: "pointer",
                     }}
                   >
-                    <div
+                    {cat}
+                  </button>
+                ))}
+              </div>
+
+              <div
+                style={{
+                  display: "flex",
+                  gap: 6,
+                }}
+              >
+                {(["instock", "outstock", "all"] as const).map((f) => (
+                  <button
+                    key={f}
+                    onClick={() => setStockFilter(f)}
+                    style={{
+                      padding: "5px 10px",
+                      borderRadius: 6,
+                      border: "1px solid #ccc",
+                      background: stockFilter === f ? "#eef3f3" : "#fff",
+                      cursor: "pointer",
+                    }}
+                  >
+                    {f === "instock"
+                      ? "Disponibles"
+                      : f === "outstock"
+                        ? "Agotadas"
+                        : "Todas"}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* PRODUCTOS */}
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                gap: 12,
+              }}
+            >
+              {filteredInventory.length === 0 ? (
+                <p
+                  style={{
+                    textAlign: "center",
+                    color: "#888",
+                    padding: 30,
+                  }}
+                >
+                  No hay productos que coincidan con los filtros.
+                </p>
+              ) : (
+                filteredInventory.map((item) => {
+                  const total = item.variants.reduce((s, v) => s + v.stock, 0);
+
+                  const profit = item.price - item.cost;
+
+                  const margin = item.price
+                    ? Math.round((profit / item.price) * 100)
+                    : 0;
+
+                  const expanded = expandedIds.includes(item.id);
+
+                  const colors = [
+                    ...new Set(item.variants.map((v) => v.color)),
+                  ];
+
+                  const sizes = [...new Set(item.variants.map((v) => v.size))];
+
+                  /*
+                    Bs del precio publicado
+                  */
+                  const bs =
+                    tasaBcv > 0
+                      ? (item.price * tasaBcv).toLocaleString("es-VE", {
+                          maximumFractionDigits: 2,
+                        })
+                      : "0,00";
+
+                  return (
+                    <article
+                      key={item.id}
                       style={{
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "space-between",
-                        flexWrap: "wrap",
-                        gap: 16,
-                        padding: "14px 16px",
+                        background: "#fff",
+                        border: "1px solid #eee",
+                        borderRadius: 8,
+                        boxShadow: "0 1px 3px rgba(0,0,0,.05)",
+                        overflow: "hidden",
                       }}
                     >
                       <div
                         style={{
                           display: "flex",
-                          gap: 12,
                           alignItems: "center",
-                          minWidth: 280,
-                        }}
-                      >
-                        <img
-                          src={item.images?.[0] || defaultImage}
-                          alt={item.name}
-                          style={{
-                            width: 52,
-                            height: 64,
-                            objectFit: "cover",
-                            borderRadius: 5,
-                          }}
-                        />
-
-                        <div>
-                          <div
-                            style={{
-                              display: "flex",
-                              gap: 8,
-                              alignItems: "center",
-                            }}
-                          >
-                            <strong>{item.name}</strong>
-
-                            <span
-                              style={{
-                                fontSize: 11,
-                                background: "#eee",
-                                padding: "2px 6px",
-                                borderRadius: 4,
-                              }}
-                            >
-                              {item.category}
-                            </span>
-                          </div>
-
-                          <div
-                            style={{
-                              color: "#777",
-                              fontSize: 12,
-                              marginTop: 5,
-                            }}
-                          >
-                            {colors.length} color
-                            {colors.length !== 1 ? "es" : ""} · {sizes.length}{" "}
-                            talla
-                            {sizes.length !== 1 ? "s" : ""} ·{" "}
-                            {item.variants.length} variantes
-                          </div>
-
-                          <div
-                            style={{
-                              color: "#777",
-                              fontSize: 12,
-                            }}
-                          >
-                            Stock total:{" "}
-                            <strong
-                              style={{
-                                color: "#18333a",
-                              }}
-                            >
-                              {total}
-                            </strong>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* PRECIOS */}
-                      <div
-                        style={{
-                          display: "flex",
-                          gap: 18,
+                          justifyContent: "space-between",
                           flexWrap: "wrap",
-                          fontSize: 12,
-                        }}
-                      >
-                        <div>
-                          <small>Precio publicado</small>
-
-                          <strong
-                            style={{
-                              display: "block",
-                            }}
-                          >
-                            ${item.price}
-                          </strong>
-
-                          <span>Bs. {bs}</span>
-                        </div>
-
-                        <div>
-                          <small>Pagando en $</small>
-
-                          <strong
-                            style={{
-                              display: "block",
-                              fontSize: 16,
-                            }}
-                          >
-                            ${item.dollarPrice.toFixed(2)}
-                          </strong>
-
-                          <span
-                            style={{
-                              color: "#18333a",
-                              fontWeight: 600,
-                            }}
-                          >
-                            {discountPercent}% OFF
-                          </span>
-                        </div>
-
-                        <div>
-                          <small>Costo / Ganancia</small>
-
-                          <span
-                            style={{
-                              display: "block",
-                            }}
-                          >
-                            ${item.cost} / <strong>${profit}</strong>
-                          </span>
-
-                          <small>Margen {margin}%</small>
-                        </div>
-                      </div>
-
-                      {/* ACCIONES */}
-                      <div
-                        style={{
-                          display: "flex",
-                          gap: 7,
-                          alignItems: "center",
-                          flexWrap: "wrap",
-                        }}
-                      >
-                        <button
-                          onClick={() => toggleVisibility(item.id)}
-                          style={{
-                            padding: "5px 8px",
-                            borderRadius: 12,
-                            border: "1px solid #ccc",
-                            background: item.webVisible ? "#e8f5e9" : "#f5f5f5",
-                            cursor: "pointer",
-                            fontSize: 11,
-                          }}
-                        >
-                          {item.webVisible ? "● Web: Visible" : "○ Web: Oculto"}
-                        </button>
-
-                        <button
-                          onClick={() => toggleExpanded(item.id)}
-                          style={{
-                            padding: "6px 10px",
-                            border: "1px solid #ccc",
-                            borderRadius: 5,
-                            background: "#fff",
-                            cursor: "pointer",
-                            fontSize: 12,
-                          }}
-                        >
-                          {expanded ? "Ocultar variantes ▲" : "Ver variantes ▼"}
-                        </button>
-
-                        <button
-                          onClick={() => openEditModal(item)}
-                          style={{
-                            padding: "6px 10px",
-                            border: "1px solid #ccc",
-                            borderRadius: 5,
-                            background: "#fff",
-                            cursor: "pointer",
-                          }}
-                        >
-                          ✏️ Editar
-                        </button>
-
-                        <button
-                          onClick={() => deleteProduct(item.id)}
-                          style={{
-                            padding: "6px 10px",
-                            border: "1px solid #ffcdd2",
-                            color: "#d32f2f",
-                            borderRadius: 5,
-                            background: "#fff",
-                            cursor: "pointer",
-                          }}
-                        >
-                          🗑️
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* VARIANTES */}
-                    {expanded && (
-                      <div
-                        style={{
-                          borderTop: "1px solid #eee",
-                          padding: 16,
-                          background: "#fafafa",
+                          gap: 16,
+                          padding: "14px 16px",
                         }}
                       >
                         <div
                           style={{
-                            display: "grid",
-                            gap: 8,
+                            display: "flex",
+                            gap: 12,
+                            alignItems: "center",
+                            minWidth: 280,
                           }}
                         >
-                          {item.variants.map((v) => (
+                          <img
+                            src={item.images?.[0] || defaultImage}
+                            alt={item.name}
+                            style={{
+                              width: 52,
+                              height: 64,
+                              objectFit: "cover",
+                              borderRadius: 5,
+                            }}
+                          />
+
+                          <div>
                             <div
-                              key={v.id}
                               style={{
-                                display: "grid",
-                                gridTemplateColumns: "1.2fr .8fr 2fr auto",
-                                gap: 10,
+                                display: "flex",
+                                gap: 8,
                                 alignItems: "center",
-                                padding: "9px 10px",
-                                background: "#fff",
-                                border: "1px solid #eee",
-                                borderRadius: 6,
-                                fontSize: 12,
+                                flexWrap: "wrap",
                               }}
                             >
-                              <strong>{v.color}</strong>
-
-                              <span>{v.size}</span>
+                              <strong>{item.name}</strong>
 
                               <span
                                 style={{
-                                  color: "#777",
+                                  fontSize: 11,
+                                  background: "#eee",
+                                  padding: "2px 6px",
+                                  borderRadius: 4,
                                 }}
                               >
-                                SKU: {v.sku}
+                                {item.category}
                               </span>
 
-                              <div
+                              {/* CAMBIO: etiqueta Sold out */}
+                              {isSoldOut(item) && (
+                                <span
+                                  style={{
+                                    fontSize: 11,
+                                    background: "#fde8e8",
+                                    color: "#b42318",
+                                    padding: "2px 6px",
+                                    borderRadius: 4,
+                                  }}
+                                >
+                                  Sold out
+                                </span>
+                              )}
+                            </div>
+
+                            <div
+                              style={{
+                                color: "#777",
+                                fontSize: 12,
+                                marginTop: 5,
+                              }}
+                            >
+                              {colors.length} color
+                              {colors.length !== 1 ? "es" : ""} · {sizes.length}{" "}
+                              talla
+                              {sizes.length !== 1 ? "s" : ""} ·{" "}
+                              {item.variants.length} variantes
+                            </div>
+
+                            <div
+                              style={{
+                                color: "#777",
+                                fontSize: 12,
+                              }}
+                            >
+                              Stock total:{" "}
+                              <strong
                                 style={{
-                                  display: "flex",
-                                  alignItems: "center",
-                                  gap: 5,
+                                  color: "#18333a",
                                 }}
                               >
-                                <button
-                                  onClick={() => updateStock(item.id, v.id, -1)}
-                                  disabled={v.stock <= 0}
-                                  style={{
-                                    width: 25,
-                                    height: 25,
-                                    border: 0,
-                                    cursor: "pointer",
-                                  }}
-                                >
-                                  −
-                                </button>
-
-                                <strong
-                                  style={{
-                                    minWidth: 22,
-                                    textAlign: "center",
-                                  }}
-                                >
-                                  {v.stock}
-                                </strong>
-
-                                <button
-                                  onClick={() => updateStock(item.id, v.id, 1)}
-                                  style={{
-                                    width: 25,
-                                    height: 25,
-                                    border: 0,
-                                    cursor: "pointer",
-                                  }}
-                                >
-                                  +
-                                </button>
-                              </div>
+                                {total}
+                              </strong>
                             </div>
-                          ))}
+                          </div>
+                        </div>
+
+                        {/* PRECIOS */}
+                        <div
+                          style={{
+                            display: "flex",
+                            gap: 18,
+                            flexWrap: "wrap",
+                            fontSize: 12,
+                          }}
+                        >
+                          <div>
+                            <small>Precio publicado</small>
+
+                            <strong
+                              style={{
+                                display: "block",
+                              }}
+                            >
+                              ${item.price}
+                            </strong>
+
+                            <span>Bs. {bs}</span>
+                          </div>
+
+                          <div>
+                            <small>Pagando en $</small>
+
+                            <strong
+                              style={{
+                                display: "block",
+                                fontSize: 16,
+                              }}
+                            >
+                              ${item.dollarPrice.toFixed(2)}
+                            </strong>
+
+                            <span
+                              style={{
+                                color: "#18333a",
+                                fontWeight: 600,
+                              }}
+                            >
+                              {discountPercent}% OFF
+                            </span>
+                          </div>
+
+                          <div>
+                            <small>Costo / Ganancia</small>
+
+                            <span
+                              style={{
+                                display: "block",
+                              }}
+                            >
+                              ${item.cost} / <strong>${profit}</strong>
+                            </span>
+
+                            <small>Margen {margin}%</small>
+                          </div>
+                        </div>
+
+                        {/* ACCIONES */}
+                        <div
+                          style={{
+                            display: "flex",
+                            gap: 7,
+                            alignItems: "center",
+                            flexWrap: "wrap",
+                          }}
+                        >
+                          <button
+                            onClick={() => toggleVisibility(item.id)}
+                            style={{
+                              padding: "5px 8px",
+                              borderRadius: 12,
+                              border: "1px solid #ccc",
+                              background: item.webVisible
+                                ? "#e8f5e9"
+                                : "#f5f5f5",
+                              cursor: "pointer",
+                              fontSize: 11,
+                            }}
+                          >
+                            {item.webVisible
+                              ? "● Web: Visible"
+                              : "○ Web: Oculto"}
+                          </button>
+
+                          <button
+                            onClick={() => toggleExpanded(item.id)}
+                            style={{
+                              padding: "6px 10px",
+                              border: "1px solid #ccc",
+                              borderRadius: 5,
+                              background: "#fff",
+                              cursor: "pointer",
+                              fontSize: 12,
+                            }}
+                          >
+                            {expanded
+                              ? "Ocultar variantes ▲"
+                              : "Ver variantes ▼"}
+                          </button>
+
+                          <button
+                            onClick={() => openEditModal(item)}
+                            style={{
+                              padding: "6px 10px",
+                              border: "1px solid #ccc",
+                              borderRadius: 5,
+                              background: "#fff",
+                              cursor: "pointer",
+                            }}
+                          >
+                            ✏️ Editar
+                          </button>
+
+                          <button
+                            onClick={() => deleteProduct(item.id)}
+                            style={{
+                              padding: "6px 10px",
+                              border: "1px solid #ffcdd2",
+                              color: "#d32f2f",
+                              borderRadius: 5,
+                              background: "#fff",
+                              cursor: "pointer",
+                            }}
+                          >
+                            🗑️
+                          </button>
                         </div>
                       </div>
-                    )}
-                  </article>
-                );
-              })
-            )}
-          </div>
-        </>
-      ) : (
-        /* HISTORIAL */
-        <div
-          style={{
-            background: "#fff",
-            border: "1px solid #eee",
-            borderRadius: 8,
-            padding: 16,
-            overflowX: "auto",
-          }}
-        >
-          <h3>Historial de Entradas</h3>
 
-          <table
-            style={{
-              width: "100%",
-              borderCollapse: "collapse",
-              fontSize: 13,
-            }}
-          >
-            <thead>
-              <tr
+                      {/* VARIANTES */}
+                      {expanded && (
+                        <div
+                          style={{
+                            borderTop: "1px solid #eee",
+                            padding: 16,
+                            background: "#fafafa",
+                          }}
+                        >
+                          <div
+                            style={{
+                              display: "grid",
+                              gap: 8,
+                            }}
+                          >
+                            {item.variants.map((v) => (
+                              <div
+                                key={v.id}
+                                style={{
+                                  display: "grid",
+                                  gridTemplateColumns: "1.2fr .8fr 2fr auto",
+                                  gap: 10,
+                                  alignItems: "center",
+                                  padding: "9px 10px",
+                                  background: "#fff",
+                                  border: "1px solid #eee",
+                                  borderRadius: 6,
+                                  fontSize: 12,
+                                }}
+                              >
+                                <strong>{v.color}</strong>
+
+                                <span>{v.size}</span>
+
+                                <span
+                                  style={{
+                                    color: "#777",
+                                  }}
+                                >
+                                  SKU: {v.sku}
+                                </span>
+
+                                <div
+                                  style={{
+                                    display: "flex",
+                                    alignItems: "center",
+                                    gap: 5,
+                                  }}
+                                >
+                                  <button
+                                    onClick={() =>
+                                      updateStock(item.id, v.id, -1)
+                                    }
+                                    disabled={v.stock <= 0}
+                                    style={{
+                                      width: 25,
+                                      height: 25,
+                                      border: 0,
+                                      cursor: "pointer",
+                                    }}
+                                  >
+                                    −
+                                  </button>
+
+                                  <strong
+                                    style={{
+                                      minWidth: 22,
+                                      textAlign: "center",
+                                    }}
+                                  >
+                                    {v.stock}
+                                  </strong>
+
+                                  <button
+                                    onClick={() =>
+                                      updateStock(item.id, v.id, 1)
+                                    }
+                                    style={{
+                                      width: 25,
+                                      height: 25,
+                                      border: 0,
+                                      cursor: "pointer",
+                                    }}
+                                  >
+                                    +
+                                  </button>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </article>
+                  );
+                })
+              )}
+            </div>
+          </>
+        ) : (
+          /* HISTORIAL POR MES */
+          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            {historyByMonth.length === 0 && (
+              <p style={{ color: "#888" }}>No hay registros.</p>
+            )}
+
+            {historyByMonth.map((group) => (
+              <div
+                key={group.key}
                 style={{
-                  textAlign: "left",
-                  borderBottom: "2px solid #eee",
+                  background: "#fff",
+                  border: "1px solid #eee",
+                  borderRadius: 8,
+                  padding: 16,
+                  overflowX: "auto",
                 }}
               >
-                <th>Fecha</th>
-                <th>Producto</th>
-                <th>Color</th>
-                <th>Talla</th>
-                <th>SKU</th>
-                <th>Cantidad</th>
-              </tr>
-            </thead>
-
-            <tbody>
-              {history.map((h) => (
-                <tr
-                  key={h.id}
+                <div
                   style={{
-                    borderBottom: "1px solid #f0f0f0",
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    marginBottom: 12,
                   }}
                 >
-                  <td>{h.arrivalDate || h.date.split("T")[0]}</td>
+                  <h3 style={{ margin: 0, textTransform: "capitalize" }}>
+                    {group.label}
+                  </h3>
+                  <strong style={{ color: "green" }}>
+                    +{group.totalUnits} unidades
+                  </strong>
+                </div>
 
-                  <td>{h.productName}</td>
-
-                  <td>{h.color}</td>
-
-                  <td>{h.size}</td>
-
-                  <td>{h.sku}</td>
-
-                  <td
-                    style={{
-                      color: "green",
-                      fontWeight: 700,
-                    }}
-                  >
-                    +{h.quantity}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-
-          {history.length === 0 && (
-            <p
-              style={{
-                color: "#888",
-              }}
-            >
-              No hay registros.
-            </p>
-          )}
-        </div>
-      )}
+                <table
+                  style={{
+                    width: "100%",
+                    borderCollapse: "collapse",
+                    fontSize: 13,
+                  }}
+                >
+                  <thead>
+                    <tr
+                      style={{
+                        textAlign: "left",
+                        borderBottom: "2px solid #eee",
+                      }}
+                    >
+                      <th>Fecha</th>
+                      <th>Producto</th>
+                      <th>Color</th>
+                      <th>Talla</th>
+                      <th>SKU</th>
+                      <th>Cantidad</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {group.items.map((h) => (
+                      <tr
+                        key={h.id}
+                        style={{ borderBottom: "1px solid #f0f0f0" }}
+                      >
+                        <td>{h.arrivalDate || h.date.split("T")[0]}</td>
+                        <td>{h.productName}</td>
+                        <td>{h.color}</td>
+                        <td>{h.size}</td>
+                        <td>{h.sku}</td>
+                        <td style={{ color: "green", fontWeight: 700 }}>
+                          +{h.quantity}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
 
       {/* MODAL */}
       {isModalOpen && (
@@ -2071,11 +2027,10 @@ export default function InventoryPage() {
                     onChange={(e) => setFormCategory(e.target.value)}
                     style={inputStyle}
                   >
-                    {categoriesList
-                      .filter((x) => x !== "Todos")
-                      .map((c) => (
-                        <option key={c}>{c}</option>
-                      ))}
+                    {/* CAMBIO: solo categorías reales de producto */}
+                    {productCategories.map((c) => (
+                      <option key={c}>{c}</option>
+                    ))}
                   </select>
                 </div>
 
