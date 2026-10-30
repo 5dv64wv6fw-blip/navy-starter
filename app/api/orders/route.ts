@@ -10,8 +10,9 @@ const ORDER_SELECT = `
   order_items ( product_name, color, size, quantity, unit_price_usd, total_price_usd )
 `;
 
-// Estado del panel que significa "pedido cancelado"
-const CANCELLED_STATUS = "Cancelado";
+// Valores de order_status que significan "pedido cancelado".
+// El panel guarda "Cancelled"; aceptamos también "Cancelado" por si cambia el texto.
+const CANCELLED_STATUSES = ["Cancelled", "Cancelado"];
 
 /*
   Convierte una fila de la base de datos en el objeto que usa el panel.
@@ -294,7 +295,7 @@ export async function PATCH(request: Request) {
     // Si el pedido se cancela y su stock estaba reservado y aún no se liberó,
     // devolvemos las prendas al inventario disponible.
     if (
-      data.order_status === CANCELLED_STATUS &&
+      CANCELLED_STATUSES.includes(data.order_status) &&
       data.stock_reserved &&
       !data.stock_released
     ) {
