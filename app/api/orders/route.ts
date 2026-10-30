@@ -23,9 +23,7 @@ function mapOrder(order: any) {
     ? order.customers[0]
     : order.customers;
 
-  const orderItems = Array.isArray(order.order_items)
-    ? order.order_items
-    : [];
+  const orderItems = Array.isArray(order.order_items) ? order.order_items : [];
 
   const total = Number(order.total_usd || order.total || 0);
 
@@ -89,27 +87,42 @@ async function requireAdmin() {
 }
 
 /*
-  Cliente con permisos de servidor.
-  Lee las credenciales desde el entorno de Cloudflare Workers.
+  Cliente administrador de Supabase.
+  Primero intenta leer las variables desde process.env.
+  Si no están disponibles, intenta leerlas desde Cloudflare.
 */
 function getAdminDb() {
-  const { env } = getCloudflareContext();
-
-  const serverEnv = env as unknown as {
+  let cloudflareEnv: {
     NEXT_PUBLIC_SUPABASE_URL?: string;
     SUPABASE_SERVICE_ROLE_KEY?: string;
-  };
+  } = {};
 
-  const supabaseUrl = serverEnv.NEXT_PUBLIC_SUPABASE_URL;
-  const serviceKey = serverEnv.SUPABASE_SERVICE_ROLE_KEY;
+  try {
+    const context = getCloudflareContext();
+    cloudflareEnv = context.env as unknown as typeof cloudflareEnv;
+  } catch (error) {
+    console.error("No se pudo acceder al contexto de Cloudflare:", error);
+  }
+
+  const supabaseUrl =
+    process.env.NEXT_PUBLIC_SUPABASE_URL ||
+    cloudflareEnv.NEXT_PUBLIC_SUPABASE_URL;
+
+  const serviceKey =
+    process.env.SUPABASE_SERVICE_ROLE_KEY ||
+    cloudflareEnv.SUPABASE_SERVICE_ROLE_KEY;
 
   if (!supabaseUrl || !serviceKey) {
-    console.error("Faltan variables de Supabase en Cloudflare:", {
+    console.error("Configuración de Supabase incompleta:", {
       hasSupabaseUrl: Boolean(supabaseUrl),
-      hasServiceKey: Boolean(serviceKey),
+      hasServiceRoleKey: Boolean(serviceKey),
     });
 
-    throw new Error("Configuración del servidor incompleta");
+    throw new Error(
+      `Configuración Supabase incompleta. URL: ${Boolean(
+        supabaseUrl,
+      )}. SERVICE ROLE KEY: ${Boolean(serviceKey)}.`,
+    );
   }
 
   return createAdminClient(supabaseUrl, serviceKey);
@@ -432,13 +445,13 @@ export async function POST(request: Request) {
 
   try {
     db = getAdminDb();
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error obteniendo cliente administrador de Supabase:", error);
 
     return NextResponse.json(
       {
         success: false,
-        error: "Configuración del servidor incompleta",
+        error: error?.message || "Error inicializando Supabase",
       },
       { status: 500 },
     );
@@ -536,10 +549,7 @@ export async function POST(request: Request) {
 
       const id = String(item.variantId);
 
-      qtyByVariant.set(
-        id,
-        (qtyByVariant.get(id) || 0) + quantity,
-      );
+      qtyByVariant.set(id, (qtyByVariant.get(id) || 0) + quantity);
     }
 
     // 4. Buscar cada variante en el inventario
@@ -617,8 +627,7 @@ export async function POST(request: Request) {
       lines.reduce((sum, l) => sum + l.total_price_usd, 0),
     );
 
-    const deliveryFeeUSD =
-      deliveryType === "delivery" ? DELIVERY_FEE_USD : 0;
+    const deliveryFeeUSD = deliveryType === "delivery" ? DELIVERY_FEE_USD : 0;
 
     const totalUSD = round2(subtotalUSD + deliveryFeeUSD);
 
@@ -636,22 +645,17 @@ export async function POST(request: Request) {
 
     const itemsBs = lines.reduce(
       (sum, l) =>
-        sum +
-        getPriceNumbers(l.unit_price_usd, rates).publishedBs * l.quantity,
+        sum + getPriceNumbers(l.unit_price_usd, rates).publishedBs * l.quantity,
       0,
     );
 
     const deliveryBs = deliveryFeeUSD * rates.tasaBCV;
 
     const describeAmount = (method: string, usd: number, bs: number) =>
-      method === "Pago Móvil"
-        ? `Bs. ${bs.toFixed(2)}`
-        : `$${usd.toFixed(2)}`;
+      method === "Pago Móvil" ? `Bs. ${bs.toFixed(2)}` : `$${usd.toFixed(2)}`;
 
     const notes = [
-      `Entrega: ${
-        deliveryType === "delivery" ? "Delivery" : "Pick Up"
-      }`,
+      `Entrega: ${deliveryType === "delivery" ? "Delivery" : "Pick Up"}`,
       `Pago prendas: ${itemsPayment} (${describeAmount(
         itemsPayment,
         subtotalUSD,
@@ -738,14 +742,12 @@ export async function POST(request: Request) {
     createdOrderId = order.id;
 
     // 10. Guardar las prendas de la orden
-    const { error: itemsError } = await db
-      .from("order_items")
-      .insert(
-        lines.map((l) => ({
-          ...l,
-          order_id: order.id,
-        })),
-      );
+    const { error: itemsError } = await db.from("order_items").insert(
+      lines.map((l) => ({
+        ...l,
+        order_id: order.id,
+      })),
+    );
 
     if (itemsError) throw itemsError;
 
@@ -796,21 +798,14 @@ export async function POST(request: Request) {
         .maybeSingle();
 
       if (savedOrder?.stock_reserved) {
-        await releaseStockForOrder(db, createdOrderId).catch(
-          (e: unknown) =>
-            console.error("Error liberando stock tras fallo:", e),
+        await releaseStockForOrder(db, createdOrderId).catch((e: unknown) =>
+          console.error("Error liberando stock tras fallo:", e),
         );
       }
 
-      await db
-        .from("order_items")
-        .delete()
-        .eq("order_id", createdOrderId);
+      await db.from("order_items").delete().eq("order_id", createdOrderId);
 
-      await db
-        .from("orders")
-        .delete()
-        .eq("id", createdOrderId);
+      await db.from("orders").delete().eq("id", createdOrderId);
     }
 
     return NextResponse.json(
