@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
 import { getPriceNumbers } from "@/lib/inventory";
+import { getCloudflareContext } from "@opennextjs/cloudflare";
 
 // Qué columnas (y tablas relacionadas) pedimos a Supabase por cada orden
 const ORDER_SELECT = `
@@ -16,7 +17,6 @@ const CANCELLED_STATUSES = ["Cancelled", "Cancelado"];
 
 /*
   Convierte una fila de la base de datos en el objeto que usa el panel.
-  GET y PATCH usan esta MISMA función, así el pedido siempre llega completo.
 */
 function mapOrder(order: any) {
   const customer = Array.isArray(order.customers)
@@ -41,8 +41,6 @@ function mapOrder(order: any) {
     detail: `${orderItems.length} items · $${total}`,
     deliveryTime: order.delivery_time || "",
     zone: order.zone || "",
-
-    // Detalles del pedido
     phone: customer?.phone || "",
     address: customer?.address || "",
     referencePoint: customer?.reference_point || "",
@@ -66,8 +64,6 @@ function mapOrder(order: any) {
 
 /*
   Comprueba que quien llama a este endpoint inició sesión como admin.
-  Se usa en GET y PATCH (leer y cambiar estados de pedidos), pero NO
-  en POST: el checkout de la tienda lo usa cualquier clienta sin sesión.
 */
 async function requireAdmin() {
   const supabase = await createClient();
@@ -88,7 +84,7 @@ async function requireAdmin() {
   return null;
 }
 
-// Cliente con permisos de servidor. Solo se crea aquí, nunca llega al navegador.
+// Cliente con permisos de servidor.
 function getAdminDb() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -146,8 +142,6 @@ export async function GET() {
 /*
   RESERVA: descuenta del stock disponible las prendas de un pedido recién
   creado. Se ejecuta una sola vez por pedido (stock_reserved).
-  Si alguna variante no tiene stock suficiente en este momento, lanza error
-  y el pedido se deshace.
 */
 async function reserveStockForOrder(db: any, orderDatabaseId: string) {
   const { data: items, error: itemsError } = await db
@@ -157,7 +151,6 @@ async function reserveStockForOrder(db: any, orderDatabaseId: string) {
 
   if (itemsError) throw itemsError;
 
-  // Descontamos cada variante. Usamos una validación de stock antes de restar.
   for (const item of items || []) {
     if (!item.variant_id) continue;
 
@@ -198,7 +191,6 @@ async function reserveStockForOrder(db: any, orderDatabaseId: string) {
 
 /*
   LIBERACIÓN: devuelve al stock disponible las prendas de un pedido cancelado.
-  Se ejecuta una sola vez por pedido (stock_released), así nunca se suma dos veces.
 */
 async function releaseStockForOrder(db: any, orderDatabaseId: string) {
   const { data: items, error: itemsError } = await db
@@ -293,8 +285,6 @@ export async function PATCH(request: Request) {
       );
     }
 
-    // Si el pedido se cancela y su stock estaba reservado y aún no se liberó,
-    // devolvemos las prendas al inventario disponible.
     if (
       CANCELLED_STATUSES.includes(data.order_status) &&
       data.stock_reserved &&
@@ -326,7 +316,6 @@ export async function PATCH(request: Request) {
 // POST: Crear un pedido nuevo desde el checkout de la web
 // ========================================================
 
-// Métodos de pago permitidos (los mismos que ofrece el checkout)
 const PAYMENT_METHODS = [
   "Pago Móvil",
   "Zinli",
@@ -334,10 +323,86 @@ const PAYMENT_METHODS = [
   "Binance",
 ];
 
-// Costo de delivery en USD (más adelante lo calcularemos por zona)
 const DELIVERY_FEE_USD = 5;
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
+
+/*
+  NOTIFICACIÓN TELEGRAM:
+  Envía un mensaje privado cuando se crea correctamente un pedido.
+  Los secretos se leen desde el entorno de Cloudflare.
+*/
+async function sendTelegramNotification(orderInfo: {
+  orderNumber: string;
+  firstName: string;
+  lastName: string;
+  phone: string;
+  address: string;
+  deliveryType: string;
+  totalUSD: number;
+  paymentMethod: string;
+  notes: string;
+  items: any[];
+}) {
+  const { env } = getCloudflareContext();
+
+  const telegramEnv = env as unknown as {
+    TELEGRAM_BOT_TOKEN?: string;
+    TELEGRAM_CHAT_ID?: string;
+  };
+
+  const token = telegramEnv.TELEGRAM_BOT_TOKEN;
+  const chatId = telegramEnv.TELEGRAM_CHAT_ID;
+
+  if (!token || !chatId) {
+    throw new Error("Faltan los secretos de Telegram en Cloudflare.");
+  }
+
+  const productsText = orderInfo.items
+    .map(
+      (item) =>
+        `• ${item.product_name} | ${item.color} | Talla: ${item.size} | Cantidad: ${item.quantity}`,
+    )
+    .join("\n");
+
+  const message = [
+    "🛍️ NUEVO PEDIDO EN NAVY",
+    "",
+    `Pedido: ${orderInfo.orderNumber}`,
+    `Cliente: ${orderInfo.firstName} ${orderInfo.lastName}`,
+    `Teléfono: ${orderInfo.phone}`,
+    "",
+    `Entrega: ${orderInfo.deliveryType === "delivery" ? "Delivery" : "Pick Up"}`,
+    `Dirección / referencia: ${orderInfo.address || "No indicada"}`,
+    "",
+    "PRODUCTOS:",
+    productsText,
+    "",
+    `Total: $${orderInfo.totalUSD.toFixed(2)}`,
+    `Método de pago: ${orderInfo.paymentMethod}`,
+    "",
+    `Detalles de pago: ${orderInfo.notes}`,
+  ].join("\n");
+
+  const response = await fetch(
+    `https://api.telegram.org/bot${token}/sendMessage`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        chat_id: chatId,
+        text: message,
+      }),
+    },
+  );
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Telegram respondió con un error: ${errorText}`);
+  }
+}
 
 export async function POST(request: Request) {
   let db: any;
@@ -374,18 +439,21 @@ export async function POST(request: Request) {
         { status: 400 },
       );
     }
+
     if (phone.replace("+", "").length < 7) {
       return NextResponse.json(
         { success: false, error: "El teléfono no es válido" },
         { status: 400 },
       );
     }
+
     if (!PAYMENT_METHODS.includes(itemsPayment)) {
       return NextResponse.json(
         { success: false, error: "Método de pago no válido" },
         { status: 400 },
       );
     }
+
     if (
       deliveryType === "delivery" &&
       !PAYMENT_METHODS.includes(deliveryPayment)
@@ -395,12 +463,14 @@ export async function POST(request: Request) {
         { status: 400 },
       );
     }
+
     if (deliveryType === "delivery" && !address) {
       return NextResponse.json(
         { success: false, error: "La dirección es requerida para delivery" },
         { status: 400 },
       );
     }
+
     if (rawItems.length === 0) {
       return NextResponse.json(
         { success: false, error: "El carrito está vacío" },
@@ -408,10 +478,12 @@ export async function POST(request: Request) {
       );
     }
 
-    // 3. Agrupar cantidades por variante (del navegador solo aceptamos id y cantidad)
+    // 3. Agrupar cantidades por variante
     const qtyByVariant = new Map<string, number>();
+
     for (const item of rawItems) {
       const quantity = Math.floor(Number(item?.quantity));
+
       if (
         !item?.variantId ||
         !Number.isFinite(quantity) ||
@@ -423,12 +495,12 @@ export async function POST(request: Request) {
           { status: 400 },
         );
       }
+
       const id = String(item.variantId);
-      // Sumamos las cantidades repetidas de la misma variante antes de validar stock
       qtyByVariant.set(id, (qtyByVariant.get(id) || 0) + quantity);
     }
 
-    // 4. Buscar cada variante en TU inventario (precios y datos reales)
+    // 4. Buscar cada variante en el inventario
     const { data: variants, error: variantsError } = await db
       .from("product_variants")
       .select(
@@ -444,6 +516,7 @@ export async function POST(request: Request) {
 
     // 5. Armar las líneas del pedido con precios calculados por el servidor
     const lines: any[] = [];
+
     for (const [variantId, quantity] of qtyByVariant.entries()) {
       const variant = variantsById.get(variantId);
       const product = Array.isArray(variant?.products)
@@ -462,8 +535,8 @@ export async function POST(request: Request) {
         );
       }
 
-      // Validación previa de stock (la validación definitiva se hace al reservar)
       const stockReal = Number(variant.stock || 0);
+
       if (stockReal < quantity) {
         return NextResponse.json(
           {
@@ -493,14 +566,15 @@ export async function POST(request: Request) {
       });
     }
 
-    // 6. Totales en USD (precios exactos)
+    // 6. Totales en USD
     const subtotalUSD = round2(
       lines.reduce((sum, l) => sum + l.total_price_usd, 0),
     );
+
     const deliveryFeeUSD = deliveryType === "delivery" ? DELIVERY_FEE_USD : 0;
     const totalUSD = round2(subtotalUSD + deliveryFeeUSD);
 
-    // 7. Tasas guardadas en el panel, para dejar registrado el monto en Bs
+    // 7. Tasas guardadas en el panel
     const { data: settings } = await db
       .from("store_settings")
       .select("tasa_bnc, tasa_bcv")
@@ -517,6 +591,7 @@ export async function POST(request: Request) {
         sum + getPriceNumbers(l.unit_price_usd, rates).publishedBs * l.quantity,
       0,
     );
+
     const deliveryBs = deliveryFeeUSD * rates.tasaBCV;
 
     const describeAmount = (method: string, usd: number, bs: number) =>
@@ -536,7 +611,7 @@ export async function POST(request: Request) {
       .filter(Boolean)
       .join(" | ");
 
-    // 8. Cliente: si ya existe ese teléfono lo reutilizamos, si no lo creamos
+    // 8. Cliente: reutilizar teléfono si ya existe
     const { data: existingCustomers, error: findError } = await db
       .from("customers")
       .select("id")
@@ -547,6 +622,7 @@ export async function POST(request: Request) {
     if (findError) throw findError;
 
     let customerId: string;
+
     const customerFields = {
       first_name: firstName,
       last_name: lastName,
@@ -556,10 +632,12 @@ export async function POST(request: Request) {
 
     if (existingCustomers && existingCustomers.length > 0) {
       customerId = existingCustomers[0].id;
+
       const { error: updateError } = await db
         .from("customers")
         .update({ ...customerFields, updated_at: new Date().toISOString() })
         .eq("id", customerId);
+
       if (updateError) throw updateError;
     } else {
       const { data: newCustomer, error: insertCustomerError } = await db
@@ -567,12 +645,15 @@ export async function POST(request: Request) {
         .insert(customerFields)
         .select("id")
         .single();
-      if (insertCustomerError || !newCustomer)
+
+      if (insertCustomerError || !newCustomer) {
         throw insertCustomerError || new Error("No se pudo crear el cliente");
+      }
+
       customerId = newCustomer.id;
     }
 
-    // 9. Crear la orden (el número NVY-#### lo genera la base de datos)
+    // 9. Crear la orden
     const { data: order, error: orderError } = await db
       .from("orders")
       .insert({
@@ -586,8 +667,10 @@ export async function POST(request: Request) {
       .select("id, order_number")
       .single();
 
-    if (orderError || !order)
+    if (orderError || !order) {
       throw orderError || new Error("No se pudo crear la orden");
+    }
+
     createdOrderId = order.id;
 
     // 10. Guardar las prendas de la orden
@@ -597,8 +680,30 @@ export async function POST(request: Request) {
 
     if (itemsError) throw itemsError;
 
-    // 11. RESERVA: descontamos el stock ahora, para que nadie más lo compre
+    // 11. Reservar el stock
     await reserveStockForOrder(db, order.id);
+
+    // 12. Enviar notificación por Telegram.
+    // Si falla Telegram, NO se elimina el pedido ni se devuelve el stock.
+    try {
+      await sendTelegramNotification({
+        orderNumber: order.order_number,
+        firstName,
+        lastName,
+        phone,
+        address,
+        deliveryType,
+        totalUSD,
+        paymentMethod: itemsPayment,
+        notes,
+        items: lines,
+      });
+    } catch (telegramError) {
+      console.error(
+        "No se pudo enviar la notificación de Telegram:",
+        telegramError,
+      );
+    }
 
     return NextResponse.json(
       {
@@ -613,9 +718,7 @@ export async function POST(request: Request) {
   } catch (error: any) {
     console.error("🚨 [ERROR POST /api/orders]:", error);
 
-    // Si la orden se creó pero falló algo después (prendas o reserva),
-    // la eliminamos. Como la reserva puede haber restado stock de algunas
-    // variantes, devolvemos esas unidades antes de borrar el pedido.
+    // Si falla algo después de crear la orden, la eliminamos y liberamos stock.
     if (createdOrderId) {
       const { data: savedOrder } = await db
         .from("orders")
