@@ -56,6 +56,13 @@ function emptyMonth(month: string) {
   };
 }
 
+const CANCELLED_STATUSES = [
+  "cancelled",
+  "canceled",
+  "cancelado",
+  "cancelada",
+];
+
 export async function GET() {
   const authError = await requireAdmin();
   if (authError) return authError;
@@ -63,13 +70,13 @@ export async function GET() {
   try {
     const supabase = await createClient();
 
+    // Consultar todos los pedidos, sin depender de paid_at.
     const { data: orders, error: ordersError } = await supabase
       .from("orders")
       .select(
-        "id, order_number, paid_at, order_status, subtotal_usd, delivery_fee_usd, order_items ( quantity, unit_price_usd, unit_cost_usd )",
+        "id, order_number, paid_at, created_at, payment_status, order_status, subtotal_usd, delivery_fee_usd, order_items ( quantity, unit_price_usd, unit_cost_usd )",
       )
-      .not("paid_at", "is", null)
-      .order("paid_at", { ascending: false });
+      .order("created_at", { ascending: false });
 
     if (ordersError) throw ordersError;
 
@@ -86,25 +93,31 @@ export async function GET() {
       if (!monthly.has(key)) {
         monthly.set(key, emptyMonth(key));
       }
+
       return monthly.get(key)!;
     };
 
-    // Ingresos y costos de pedidos pagados que no estén cancelados.
+    // Contabilizar pedidos con pago confirmado y no cancelados.
     for (const order of orders || []) {
-      const status = String(order.order_status || "")
+      const paymentStatus = String(order.payment_status || "")
         .trim()
         .toLowerCase();
 
-      const isCancelled = [
-        "cancelled",
-        "canceled",
-        "cancelado",
-        "cancelada",
-      ].includes(status);
+      const orderStatus = String(order.order_status || "")
+        .trim()
+        .toLowerCase();
 
-      if (!order.paid_at || isCancelled) continue;
+      const isConfirmed = paymentStatus === "confirmed";
+      const isCancelled = CANCELLED_STATUSES.includes(orderStatus);
 
-      const bucket = getMonth(monthKey(order.paid_at));
+      if (!isConfirmed || isCancelled) continue;
+
+      // Usar paid_at cuando exista; si no, utilizar created_at.
+      const saleDate = order.paid_at || order.created_at;
+
+      if (!saleDate) continue;
+
+      const bucket = getMonth(monthKey(saleDate));
 
       const costoPedido = (order.order_items || []).reduce(
         (sum: number, item: any) =>
@@ -134,7 +147,7 @@ export async function GET() {
       }
     }
 
-    // Cálculos de ingresos y distribución de ganancias.
+    // Cálculos financieros.
     for (const bucket of monthly.values()) {
       bucket.ingresosTotales = bucket.ventas + bucket.delivery;
 
@@ -142,7 +155,6 @@ export async function GET() {
 
       bucket.gananciaNeta = bucket.gananciaBruta - bucket.gastos;
 
-      // El reparto se calcula únicamente sobre ganancias positivas.
       const baseDistribucion = Math.max(0, bucket.gananciaNeta);
 
       bucket.reinversionGanancia = baseDistribucion * 0.3;
