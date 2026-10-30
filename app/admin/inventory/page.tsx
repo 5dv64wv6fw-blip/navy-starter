@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
+import AdminMenu from "@/components/admin/AdminMenu";
 import { createClient } from "@/lib/supabase/client";
 
 interface ProductVariant {
@@ -302,8 +303,6 @@ export default function InventoryPage() {
   const [activeMainTab, setActiveMainTab] = useState<"inventory" | "history">(
     "inventory",
   );
-
-  const [isMenuOpen, setIsMenuOpen] = useState(false);
 
   const [stockFilter, setStockFilter] = useState<
     "instock" | "outstock" | "all"
@@ -1083,6 +1082,7 @@ export default function InventoryPage() {
       alert("No se pudo cambiar la visibilidad. Inténtalo de nuevo.");
     }
   };
+
   /*
     Expandir variantes
   */
@@ -1128,1710 +1128,1622 @@ export default function InventoryPage() {
     tasaBcv > 0 ? (((tasaBnc - tasaBcv) / tasaBcv) * 100).toFixed(1) : "0";
 
   return (
-    <main
-      style={{
-        padding: 20,
-        maxWidth: 1200,
-        margin: "0 auto",
-        fontFamily: "sans-serif",
-      }}
-    >
+    <main className="admin-shell">
+      {/* ENCABEZADO: mismo menú que el resto del panel */}
       <header
+        className="admin-top"
         style={{
           display: "flex",
           justifyContent: "space-between",
           alignItems: "center",
           gap: 12,
           flexWrap: "wrap",
-          marginBottom: 20,
-          borderBottom: "1px solid #eee",
-          paddingBottom: 12,
         }}
       >
+        <Link className="admin-logo" href="/admin">
+          NAVY ADMIN
+        </Link>
+        <AdminMenu />
+      </header>
+
+      <div className="admin-main">
         <div
           style={{
             display: "flex",
-            gap: 16,
+            justifyContent: "space-between",
             alignItems: "center",
+            gap: 12,
+            flexWrap: "wrap",
+            marginBottom: 16,
           }}
         >
-          <Link
-            href="/admin"
+          <div>
+            <h1
+              style={{
+                fontSize: 24,
+                margin: 0,
+              }}
+            >
+              Inventory & Web Control
+            </h1>
+
+            <span
+              style={{
+                fontSize: 13,
+                color: "#666",
+              }}
+            >
+              Navy - Clothing Store · V3
+            </span>
+          </div>
+
+          <button
+            onClick={openAddModal}
             style={{
-              fontWeight: 700,
-              fontSize: 18,
-              textDecoration: "none",
-              color: "#18333a",
+              padding: "9px 16px",
+              cursor: "pointer",
+              background: "#18333a",
+              color: "#fff",
+              border: 0,
+              borderRadius: 6,
+              fontWeight: 600,
             }}
           >
-            NAVY ADMIN
-          </Link>
+            + Add Product
+          </button>
+        </div>
+
+        {/* CONFIGURACIÓN DE PRECIOS */}
+        <section
+          style={{
+            marginBottom: 20,
+            background: "#fff",
+            border: "1px solid #eee",
+            borderRadius: 10,
+            padding: 16,
+          }}
+        >
+          <div
+            style={{
+              fontWeight: 700,
+              marginBottom: 12,
+            }}
+          >
+            Configuración de precios
+          </div>
 
           <div
             style={{
-              position: "relative",
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit,minmax(170px,1fr))",
+              gap: 12,
             }}
           >
-            <button
-              onClick={() => setIsMenuOpen(!isMenuOpen)}
-              style={{
-                background: "none",
-                border: 0,
-                cursor: "pointer",
-              }}
-            >
-              Menu {isMenuOpen ? "▲" : "▼"}
-            </button>
+            <div>
+              <small>Tasa BNC (Bs)</small>
 
-            {isMenuOpen && (
+              <input
+                type="number"
+                value={tasaBnc}
+                onChange={(e) => setTasaBnc(Number(e.target.value))}
+                style={inputStyle}
+              />
+            </div>
+
+            <div>
+              <small>Tasa BCV (Bs)</small>
+
+              <input
+                type="number"
+                step="0.01"
+                value={tasaBcv}
+                onChange={(e) => setTasaBcv(Number(e.target.value))}
+                style={inputStyle}
+              />
+            </div>
+
+            <div>
+              <small>Descuento pagando en $</small>
+
               <div
                 style={{
-                  position: "absolute",
-                  top: 30,
-                  background: "#fff",
-                  border: "1px solid #eee",
-                  borderRadius: 8,
-                  padding: 14,
                   display: "flex",
-                  flexDirection: "column",
-                  gap: 12,
-                  minWidth: 150,
-                  zIndex: 10,
+                  gap: 6,
+                  alignItems: "center",
                 }}
               >
-                <Link href="/admin">Inicio</Link>
+                <input
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="1"
+                  value={discountPercent}
+                  onChange={(e) =>
+                    setDiscountPercent(
+                      Math.max(0, Math.min(100, Number(e.target.value))),
+                    )
+                  }
+                  style={{
+                    ...inputStyle,
+                    marginTop: 5,
+                  }}
+                />
 
-                <Link href="/admin/inventory">Inventory</Link>
-
-                <Link href="/admin/orders">Orders</Link>
-
-                <Link href="/admin/finances">Finances</Link>
-
-                {/* NUEVO */}
-                <Link href="/admin/homepage">Homepage</Link>
+                <span>%</span>
               </div>
-            )}
-          </div>
-        </div>
+            </div>
 
-        <nav
-          style={{
-            display: "flex",
-            gap: 16,
-          }}
-        >
-          <Link href="/admin/inventory">Inventory</Link>
-
-          <Link
-            href="/admin/orders"
-            style={{
-              opacity: 0.5,
-            }}
-          >
-            Orders
-          </Link>
-
-          {/* NUEVO */}
-          <Link href="/admin/homepage">Homepage</Link>
-        </nav>
-      </header>
-
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          gap: 12,
-          flexWrap: "wrap",
-          marginBottom: 16,
-        }}
-      >
-        <div>
-          <h1
-            style={{
-              fontSize: 24,
-              margin: 0,
-            }}
-          >
-            Inventory & Web Control
-          </h1>
-
-          <span
-            style={{
-              fontSize: 13,
-              color: "#666",
-            }}
-          >
-            Navy - Clothing Store · V3
-          </span>
-        </div>
-
-        <button
-          onClick={openAddModal}
-          style={{
-            padding: "9px 16px",
-            cursor: "pointer",
-            background: "#18333a",
-            color: "#fff",
-            border: 0,
-            borderRadius: 6,
-            fontWeight: 600,
-          }}
-        >
-          + Add Product
-        </button>
-      </div>
-
-      {/* CONFIGURACIÓN DE PRECIOS */}
-      <section
-        style={{
-          marginBottom: 20,
-          background: "#fff",
-          border: "1px solid #eee",
-          borderRadius: 10,
-          padding: 16,
-        }}
-      >
-        <div
-          style={{
-            fontWeight: 700,
-            marginBottom: 12,
-          }}
-        >
-          Configuración de precios
-        </div>
-
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit,minmax(170px,1fr))",
-            gap: 12,
-          }}
-        >
-          <div>
-            <small>Tasa BNC (Bs)</small>
-
-            <input
-              type="number"
-              value={tasaBnc}
-              onChange={(e) => setTasaBnc(Number(e.target.value))}
-              style={inputStyle}
-            />
-          </div>
-
-          <div>
-            <small>Tasa BCV (Bs)</small>
-
-            <input
-              type="number"
-              step="0.01"
-              value={tasaBcv}
-              onChange={(e) => setTasaBcv(Number(e.target.value))}
-              style={inputStyle}
-            />
-          </div>
-
-          <div>
-            <small>Descuento pagando en $</small>
-
-            <div
+            <label
               style={{
                 display: "flex",
-                gap: 6,
                 alignItems: "center",
+                gap: 8,
+                fontSize: 13,
+                paddingTop: 20,
               }}
             >
               <input
-                type="number"
-                min="0"
-                max="100"
-                step="1"
-                value={discountPercent}
-                onChange={(e) =>
-                  setDiscountPercent(
-                    Math.max(0, Math.min(100, Number(e.target.value))),
-                  )
-                }
-                style={{
-                  ...inputStyle,
-                  marginTop: 5,
-                }}
+                type="checkbox"
+                checked={roundPricesUp}
+                onChange={(e) => setRoundPricesUp(e.target.checked)}
               />
-
-              <span>%</span>
-            </div>
+              Redondear hacia arriba
+            </label>
           </div>
 
-          <label
+          <button
+            onClick={saveRates}
             style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-              fontSize: 13,
-              paddingTop: 20,
+              ...primaryBtn,
+              marginTop: 16,
             }}
           >
-            <input
-              type="checkbox"
-              checked={roundPricesUp}
-              onChange={(e) => setRoundPricesUp(e.target.checked)}
-            />
-            Redondear hacia arriba
-          </label>
-        </div>
+            Guardar configuración
+          </button>
+        </section>
 
-        <button
-          onClick={saveRates}
-          style={{
-            ...primaryBtn,
-            marginTop: 16,
-          }}
-        >
-          Guardar configuración
-        </button>
-      </section>
-
-      {/* RESUMEN */}
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fit,minmax(140px,1fr))",
-          gap: 12,
-          marginBottom: 20,
-          background: "#fff",
-          border: "1px solid #eee",
-          borderRadius: 8,
-          padding: 16,
-        }}
-      >
-        <div>
-          <small>Total unidades</small>
-
-          <strong
-            style={{
-              display: "block",
-              fontSize: 18,
-            }}
-          >
-            {totalUnits}
-          </strong>
-        </div>
-
-        <div>
-          <small>Diferencia entre tasas</small>
-
-          <strong
-            style={{
-              display: "block",
-              fontSize: 18,
-            }}
-          >
-            +{tasaDiff}%
-          </strong>
-        </div>
-
-        <div>
-          <small>Ganancia actual</small>
-
-          <strong
-            style={{
-              display: "block",
-              fontSize: 18,
-            }}
-          >
-            ${currentProfit.toFixed(2)}
-          </strong>
-        </div>
-      </div>
-
-      {/* TABS */}
-      <div
-        style={{
-          display: "flex",
-          gap: 12,
-          marginBottom: 16,
-          borderBottom: "1px solid #eee",
-          paddingBottom: 12,
-        }}
-      >
-        <button
-          onClick={() => setActiveMainTab("inventory")}
-          style={{
-            border: 0,
-            background: "none",
-            fontWeight: activeMainTab === "inventory" ? 700 : 400,
-            cursor: "pointer",
-          }}
-        >
-          Inventario Actual
-        </button>
-
-        <button
-          onClick={() => setActiveMainTab("history")}
-          style={{
-            border: 0,
-            background: "none",
-            fontWeight: activeMainTab === "history" ? 700 : 400,
-            cursor: "pointer",
-          }}
-        >
-          Historial de Entradas 📅
-        </button>
-      </div>
-
-      {activeMainTab === "inventory" ? (
-        <>
-          {/* FILTROS */}
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              flexWrap: "wrap",
-              gap: 12,
-              marginBottom: 16,
-            }}
-          >
-            <div
-              style={{
-                display: "flex",
-                gap: 6,
-                flexWrap: "wrap",
-              }}
-            >
-              {categoriesList.map((cat) => (
-                <button
-                  key={cat}
-                  onClick={() => setCategoryFilter(cat)}
-                  style={{
-                    padding: "5px 12px",
-                    borderRadius: 6,
-                    border: "1px solid #ccc",
-                    background: categoryFilter === cat ? "#18333a" : "#fff",
-                    color: categoryFilter === cat ? "#fff" : "#18333a",
-                    cursor: "pointer",
-                  }}
-                >
-                  {cat}
-                </button>
-              ))}
-            </div>
-
-            <div
-              style={{
-                display: "flex",
-                gap: 6,
-              }}
-            >
-              {(["instock", "outstock", "all"] as const).map((f) => (
-                <button
-                  key={f}
-                  onClick={() => setStockFilter(f)}
-                  style={{
-                    padding: "5px 10px",
-                    borderRadius: 6,
-                    border: "1px solid #ccc",
-                    background: stockFilter === f ? "#eef3f3" : "#fff",
-                    cursor: "pointer",
-                  }}
-                >
-                  {f === "instock"
-                    ? "Disponibles"
-                    : f === "outstock"
-                      ? "Agotadas"
-                      : "Todas"}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* PRODUCTOS */}
-          <div
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              gap: 12,
-            }}
-          >
-            {filteredInventory.length === 0 ? (
-              <p
-                style={{
-                  textAlign: "center",
-                  color: "#888",
-                  padding: 30,
-                }}
-              >
-                No hay productos que coincidan con los filtros.
-              </p>
-            ) : (
-              filteredInventory.map((item) => {
-                const total = item.variants.reduce((s, v) => s + v.stock, 0);
-
-                const profit = item.price - item.cost;
-
-                const margin = item.price
-                  ? Math.round((profit / item.price) * 100)
-                  : 0;
-
-                const expanded = expandedIds.includes(item.id);
-
-                const colors = [...new Set(item.variants.map((v) => v.color))];
-
-                const sizes = [...new Set(item.variants.map((v) => v.size))];
-
-                /*
-                  Bs del precio publicado
-                */
-                const bs =
-                  tasaBcv > 0
-                    ? (item.price * tasaBcv).toLocaleString("es-VE", {
-                        maximumFractionDigits: 2,
-                      })
-                    : "0,00";
-
-                return (
-                  <article
-                    key={item.id}
-                    style={{
-                      background: "#fff",
-                      border: "1px solid #eee",
-                      borderRadius: 8,
-                      boxShadow: "0 1px 3px rgba(0,0,0,.05)",
-                      overflow: "hidden",
-                    }}
-                  >
-                    <div
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "space-between",
-                        flexWrap: "wrap",
-                        gap: 16,
-                        padding: "14px 16px",
-                      }}
-                    >
-                      <div
-                        style={{
-                          display: "flex",
-                          gap: 12,
-                          alignItems: "center",
-                          minWidth: 280,
-                        }}
-                      >
-                        <img
-                          src={item.images?.[0] || defaultImage}
-                          alt={item.name}
-                          style={{
-                            width: 52,
-                            height: 64,
-                            objectFit: "cover",
-                            borderRadius: 5,
-                          }}
-                        />
-
-                        <div>
-                          <div
-                            style={{
-                              display: "flex",
-                              gap: 8,
-                              alignItems: "center",
-                            }}
-                          >
-                            <strong>{item.name}</strong>
-
-                            <span
-                              style={{
-                                fontSize: 11,
-                                background: "#eee",
-                                padding: "2px 6px",
-                                borderRadius: 4,
-                              }}
-                            >
-                              {item.category}
-                            </span>
-                          </div>
-
-                          <div
-                            style={{
-                              color: "#777",
-                              fontSize: 12,
-                              marginTop: 5,
-                            }}
-                          >
-                            {colors.length} color
-                            {colors.length !== 1 ? "es" : ""} · {sizes.length}{" "}
-                            talla
-                            {sizes.length !== 1 ? "s" : ""} ·{" "}
-                            {item.variants.length} variantes
-                          </div>
-
-                          <div
-                            style={{
-                              color: "#777",
-                              fontSize: 12,
-                            }}
-                          >
-                            Stock total:{" "}
-                            <strong
-                              style={{
-                                color: "#18333a",
-                              }}
-                            >
-                              {total}
-                            </strong>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* PRECIOS */}
-                      <div
-                        style={{
-                          display: "flex",
-                          gap: 18,
-                          flexWrap: "wrap",
-                          fontSize: 12,
-                        }}
-                      >
-                        <div>
-                          <small>Precio publicado</small>
-
-                          <strong
-                            style={{
-                              display: "block",
-                            }}
-                          >
-                            ${item.price}
-                          </strong>
-
-                          <span>Bs. {bs}</span>
-                        </div>
-
-                        <div>
-                          <small>Pagando en $</small>
-
-                          <strong
-                            style={{
-                              display: "block",
-                              fontSize: 16,
-                            }}
-                          >
-                            ${item.dollarPrice.toFixed(2)}
-                          </strong>
-
-                          <span
-                            style={{
-                              color: "#18333a",
-                              fontWeight: 600,
-                            }}
-                          >
-                            {discountPercent}% OFF
-                          </span>
-                        </div>
-
-                        <div>
-                          <small>Costo / Ganancia</small>
-
-                          <span
-                            style={{
-                              display: "block",
-                            }}
-                          >
-                            ${item.cost} / <strong>${profit}</strong>
-                          </span>
-
-                          <small>Margen {margin}%</small>
-                        </div>
-                      </div>
-
-                      {/* ACCIONES */}
-                      <div
-                        style={{
-                          display: "flex",
-                          gap: 7,
-                          alignItems: "center",
-                          flexWrap: "wrap",
-                        }}
-                      >
-                        <button
-                          onClick={() => toggleVisibility(item.id)}
-                          style={{
-                            padding: "5px 8px",
-                            borderRadius: 12,
-                            border: "1px solid #ccc",
-                            background: item.webVisible ? "#e8f5e9" : "#f5f5f5",
-                            cursor: "pointer",
-                            fontSize: 11,
-                          }}
-                        >
-                          {item.webVisible ? "● Web: Visible" : "○ Web: Oculto"}
-                        </button>
-
-                        <button
-                          onClick={() => toggleExpanded(item.id)}
-                          style={{
-                            padding: "6px 10px",
-                            border: "1px solid #ccc",
-                            borderRadius: 5,
-                            background: "#fff",
-                            cursor: "pointer",
-                            fontSize: 12,
-                          }}
-                        >
-                          {expanded ? "Ocultar variantes ▲" : "Ver variantes ▼"}
-                        </button>
-
-                        <button
-                          onClick={() => openEditModal(item)}
-                          style={{
-                            padding: "6px 10px",
-                            border: "1px solid #ccc",
-                            borderRadius: 5,
-                            background: "#fff",
-                            cursor: "pointer",
-                          }}
-                        >
-                          ✏️ Editar
-                        </button>
-
-                        <button
-                          onClick={() => deleteProduct(item.id)}
-                          style={{
-                            padding: "6px 10px",
-                            border: "1px solid #ffcdd2",
-                            color: "#d32f2f",
-                            borderRadius: 5,
-                            background: "#fff",
-                            cursor: "pointer",
-                          }}
-                        >
-                          🗑️
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* VARIANTES */}
-                    {expanded && (
-                      <div
-                        style={{
-                          borderTop: "1px solid #eee",
-                          padding: 16,
-                          background: "#fafafa",
-                        }}
-                      >
-                        <div
-                          style={{
-                            display: "grid",
-                            gap: 8,
-                          }}
-                        >
-                          {item.variants.map((v) => (
-                            <div
-                              key={v.id}
-                              style={{
-                                display: "grid",
-                                gridTemplateColumns: "1.2fr .8fr 2fr auto",
-                                gap: 10,
-                                alignItems: "center",
-                                padding: "9px 10px",
-                                background: "#fff",
-                                border: "1px solid #eee",
-                                borderRadius: 6,
-                                fontSize: 12,
-                              }}
-                            >
-                              <strong>{v.color}</strong>
-
-                              <span>{v.size}</span>
-
-                              <span
-                                style={{
-                                  color: "#777",
-                                }}
-                              >
-                                SKU: {v.sku}
-                              </span>
-
-                              <div
-                                style={{
-                                  display: "flex",
-                                  alignItems: "center",
-                                  gap: 5,
-                                }}
-                              >
-                                <button
-                                  onClick={() => updateStock(item.id, v.id, -1)}
-                                  disabled={v.stock <= 0}
-                                  style={{
-                                    width: 25,
-                                    height: 25,
-                                    border: 0,
-                                    cursor: "pointer",
-                                  }}
-                                >
-                                  −
-                                </button>
-
-                                <strong
-                                  style={{
-                                    minWidth: 22,
-                                    textAlign: "center",
-                                  }}
-                                >
-                                  {v.stock}
-                                </strong>
-
-                                <button
-                                  onClick={() => updateStock(item.id, v.id, 1)}
-                                  style={{
-                                    width: 25,
-                                    height: 25,
-                                    border: 0,
-                                    cursor: "pointer",
-                                  }}
-                                >
-                                  +
-                                </button>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </article>
-                );
-              })
-            )}
-          </div>
-        </>
-      ) : (
-        /* HISTORIAL */
+        {/* RESUMEN */}
         <div
           style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit,minmax(140px,1fr))",
+            gap: 12,
+            marginBottom: 20,
             background: "#fff",
             border: "1px solid #eee",
             borderRadius: 8,
             padding: 16,
-            overflowX: "auto",
           }}
         >
-          <h3>Historial de Entradas</h3>
+          <div>
+            <small>Total unidades</small>
 
-          <table
-            style={{
-              width: "100%",
-              borderCollapse: "collapse",
-              fontSize: 13,
-            }}
-          >
-            <thead>
-              <tr
-                style={{
-                  textAlign: "left",
-                  borderBottom: "2px solid #eee",
-                }}
-              >
-                <th>Fecha</th>
-                <th>Producto</th>
-                <th>Color</th>
-                <th>Talla</th>
-                <th>SKU</th>
-                <th>Cantidad</th>
-              </tr>
-            </thead>
-
-            <tbody>
-              {history.map((h) => (
-                <tr
-                  key={h.id}
-                  style={{
-                    borderBottom: "1px solid #f0f0f0",
-                  }}
-                >
-                  <td>{h.arrivalDate || h.date.split("T")[0]}</td>
-
-                  <td>{h.productName}</td>
-
-                  <td>{h.color}</td>
-
-                  <td>{h.size}</td>
-
-                  <td>{h.sku}</td>
-
-                  <td
-                    style={{
-                      color: "green",
-                      fontWeight: 700,
-                    }}
-                  >
-                    +{h.quantity}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-
-          {history.length === 0 && (
-            <p
+            <strong
               style={{
-                color: "#888",
+                display: "block",
+                fontSize: 18,
               }}
             >
-              No hay registros.
-            </p>
-          )}
-        </div>
-      )}
+              {totalUnits}
+            </strong>
+          </div>
 
-      {/* MODAL */}
-      {isModalOpen && (
+          <div>
+            <small>Diferencia entre tasas</small>
+
+            <strong
+              style={{
+                display: "block",
+                fontSize: 18,
+              }}
+            >
+              +{tasaDiff}%
+            </strong>
+          </div>
+
+          <div>
+            <small>Ganancia actual</small>
+
+            <strong
+              style={{
+                display: "block",
+                fontSize: 18,
+              }}
+            >
+              ${currentProfit.toFixed(2)}
+            </strong>
+          </div>
+        </div>
+
+        {/* TABS */}
         <div
           style={{
-            position: "fixed",
-            inset: 0,
-            background: "rgba(0,0,0,.45)",
             display: "flex",
-            justifyContent: "center",
-            alignItems: "center",
-            zIndex: 1000,
-            padding: 15,
+            gap: 12,
+            marginBottom: 16,
+            borderBottom: "1px solid #eee",
+            paddingBottom: 12,
           }}
         >
-          <div
+          <button
+            onClick={() => setActiveMainTab("inventory")}
             style={{
-              background: "#fff",
-              borderRadius: 12,
-              padding: 24,
-              width: "min(700px, 100%)",
-              maxHeight: "92vh",
-              overflowY: "auto",
+              border: 0,
+              background: "none",
+              fontWeight: activeMainTab === "inventory" ? 700 : 400,
+              cursor: "pointer",
             }}
           >
+            Inventario Actual
+          </button>
+
+          <button
+            onClick={() => setActiveMainTab("history")}
+            style={{
+              border: 0,
+              background: "none",
+              fontWeight: activeMainTab === "history" ? 700 : 400,
+              cursor: "pointer",
+            }}
+          >
+            Historial de Entradas 📅
+          </button>
+        </div>
+
+        {activeMainTab === "inventory" ? (
+          <>
+            {/* FILTROS */}
             <div
               style={{
                 display: "flex",
                 justifyContent: "space-between",
-                alignItems: "center",
-                borderBottom: "1px solid #eee",
-                paddingBottom: 12,
+                flexWrap: "wrap",
+                gap: 12,
                 marginBottom: 16,
               }}
             >
-              <h2
+              <div
                 style={{
-                  margin: 0,
-                  fontSize: 20,
+                  display: "flex",
+                  gap: 6,
+                  flexWrap: "wrap",
                 }}
               >
-                {editingItem ? "Editar Prenda" : "Nueva Prenda"}
-              </h2>
+                {categoriesList.map((cat) => (
+                  <button
+                    key={cat}
+                    onClick={() => setCategoryFilter(cat)}
+                    style={{
+                      padding: "5px 12px",
+                      borderRadius: 6,
+                      border: "1px solid #ccc",
+                      background: categoryFilter === cat ? "#18333a" : "#fff",
+                      color: categoryFilter === cat ? "#fff" : "#18333a",
+                      cursor: "pointer",
+                    }}
+                  >
+                    {cat}
+                  </button>
+                ))}
+              </div>
 
-              <button
-                onClick={() => {
-                  setIsModalOpen(false);
-                  resetForm();
-                }}
+              <div
                 style={{
-                  border: 0,
-                  background: "none",
-                  fontSize: 20,
-                  cursor: "pointer",
+                  display: "flex",
+                  gap: 6,
                 }}
               >
-                ✕
-              </button>
+                {(["instock", "outstock", "all"] as const).map((f) => (
+                  <button
+                    key={f}
+                    onClick={() => setStockFilter(f)}
+                    style={{
+                      padding: "5px 10px",
+                      borderRadius: 6,
+                      border: "1px solid #ccc",
+                      background: stockFilter === f ? "#eef3f3" : "#fff",
+                      cursor: "pointer",
+                    }}
+                  >
+                    {f === "instock"
+                      ? "Disponibles"
+                      : f === "outstock"
+                        ? "Agotadas"
+                        : "Todas"}
+                  </button>
+                ))}
+              </div>
             </div>
 
-            <form
-              onSubmit={saveProduct}
+            {/* PRODUCTOS */}
+            <div
               style={{
                 display: "flex",
                 flexDirection: "column",
-                gap: 16,
+                gap: 12,
               }}
             >
-              {/* NOMBRE */}
-              <div>
-                <label>Nombre del producto *</label>
-
-                <input
-                  required
-                  value={formName}
-                  onChange={(e) => setFormName(e.target.value)}
-                  placeholder="Ej. Luna Top"
-                  style={inputStyle}
-                />
-              </div>
-
-              {/* CATEGORÍA + COSTO */}
-              <div style={grid2}>
-                <div>
-                  <label>Categoría</label>
-
-                  <select
-                    value={formCategory}
-                    onChange={(e) => setFormCategory(e.target.value)}
-                    style={inputStyle}
-                  >
-                    {categoriesList
-                      .filter((x) => x !== "Todos")
-                      .map((c) => (
-                        <option key={c}>{c}</option>
-                      ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label>Costo USD *</label>
-
-                  <input
-                    required
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    value={formCost}
-                    onChange={(e) =>
-                      setFormCost(
-                        e.target.value === "" ? "" : Number(e.target.value),
-                      )
-                    }
-                    style={inputStyle}
-                  />
-                </div>
-              </div>
-
-              {/* PRECIO EN DÓLARES */}
-              <div
-                style={{
-                  padding: 14,
-                  borderRadius: 8,
-                  background: "#f8f6f1",
-                  border: "1px solid #eee",
-                }}
-              >
-                <label
-                  style={{
-                    display: "block",
-                    fontWeight: 600,
-                  }}
-                >
-                  Precio pagando en $ *
-                </label>
-
-                <input
-                  required
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={formDollarPrice}
-                  onChange={(e) =>
-                    setFormDollarPrice(
-                      e.target.value === "" ? "" : Number(e.target.value),
-                    )
-                  }
-                  placeholder="Ej. 25"
-                  style={inputStyle}
-                />
-              </div>
-
-              {/* PRECIO PUBLICADO */}
-              <div
-                style={{
-                  padding: 14,
-                  borderRadius: 8,
-                  background: "#eef3f3",
-                  border: "1px solid #dce5e5",
-                }}
-              >
-                <div
-                  style={{
-                    fontSize: 12,
-                    color: "#666",
-                  }}
-                >
-                  Precio publicado automático
-                </div>
-
-                <strong
-                  style={{
-                    fontSize: 26,
-                    display: "block",
-                    marginTop: 2,
-                  }}
-                >
-                  {formDollarPrice !== "" && tasaBnc > 0 && tasaBcv > 0
-                    ? `$${calculatePublishedPrice(Number(formDollarPrice))}`
-                    : "—"}
-                </strong>
-
-                {formDollarPrice !== "" && tasaBnc > 0 && tasaBcv > 0 && (
-                  <div
-                    style={{
-                      marginTop: 8,
-                      fontSize: 13,
-                      fontWeight: 600,
-                    }}
-                  >
-                    Pagando en $: ${Number(formDollarPrice).toFixed(2)} ·{" "}
-                    {discountPercent}% OFF
-                  </div>
-                )}
-              </div>
-
-              {/* COLORES */}
-              <section style={sectionStyle}>
-                <h3 style={sectionTitle}>1. Colores</h3>
-
-                <div
-                  style={{
-                    display: "flex",
-                    gap: 8,
-                  }}
-                >
-                  <input
-                    value={newColor}
-                    onChange={(e) => setNewColor(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        e.preventDefault();
-                        addColor();
-                      }
-                    }}
-                    placeholder="Ej. Navy, Ivory, Pink"
-                    style={{
-                      ...inputStyle,
-                      flex: 1,
-                    }}
-                  />
-
-                  <button type="button" onClick={addColor} style={secondaryBtn}>
-                    + Agregar
-                  </button>
-                </div>
-
-                <div
-                  style={{
-                    display: "flex",
-                    gap: 7,
-                    flexWrap: "wrap",
-                    marginTop: 10,
-                  }}
-                >
-                  {formColors.map((c) => (
-                    <span
-                      key={c}
-                      style={{
-                        background: "#eef3f3",
-                        padding: "6px 9px",
-                        borderRadius: 15,
-                        fontSize: 12,
-                      }}
-                    >
-                      {c}{" "}
-                      <button
-                        type="button"
-                        onClick={() => removeColor(c)}
-                        style={{
-                          border: 0,
-                          background: "none",
-                          cursor: "pointer",
-                        }}
-                      >
-                        ×
-                      </button>
-                    </span>
-                  ))}
-                </div>
-              </section>
-
-              {/* TALLAS */}
-              <section style={sectionStyle}>
-                <h3 style={sectionTitle}>2. Tallas y stock</h3>
-
+              {filteredInventory.length === 0 ? (
                 <p
                   style={{
-                    fontSize: 12,
-                    color: "#777",
-                    marginTop: 0,
+                    textAlign: "center",
+                    color: "#888",
+                    padding: 30,
                   }}
                 >
-                  Selecciona las tallas disponibles para cada color. El SKU se
-                  genera automáticamente.
+                  No hay productos que coincidan con los filtros.
                 </p>
+              ) : (
+                filteredInventory.map((item) => {
+                  const total = item.variants.reduce((s, v) => s + v.stock, 0);
 
-                {formColors.length === 0 && (
-                  <p
-                    style={{
-                      color: "#999",
-                      fontSize: 13,
-                    }}
-                  >
-                    Agrega primero un color.
-                  </p>
-                )}
+                  const profit = item.price - item.cost;
 
-                {formColors.map((color) => (
-                  <div
-                    key={color}
-                    style={{
-                      border: "1px solid #eee",
-                      borderRadius: 8,
-                      padding: 12,
-                      marginBottom: 10,
-                    }}
-                  >
-                    <strong>{color}</strong>
+                  const margin = item.price
+                    ? Math.round((profit / item.price) * 100)
+                    : 0;
 
-                    <div
+                  const expanded = expandedIds.includes(item.id);
+
+                  const colors = [...new Set(item.variants.map((v) => v.color))];
+
+                  const sizes = [...new Set(item.variants.map((v) => v.size))];
+
+                  /*
+                    Bs del precio publicado
+                  */
+                  const bs =
+                    tasaBcv > 0
+                      ? (item.price * tasaBcv).toLocaleString("es-VE", {
+                          maximumFractionDigits: 2,
+                        })
+                      : "0,00";
+
+                  return (
+                    <article
+                      key={item.id}
                       style={{
-                        display: "grid",
-                        gridTemplateColumns:
-                          "repeat(auto-fit,minmax(120px,1fr))",
-                        gap: 8,
-                        marginTop: 10,
+                        background: "#fff",
+                        border: "1px solid #eee",
+                        borderRadius: 8,
+                        boxShadow: "0 1px 3px rgba(0,0,0,.05)",
+                        overflow: "hidden",
                       }}
                     >
-                      {sizesList.map((size) => {
-                        const selected = Object.prototype.hasOwnProperty.call(
-                          variantDrafts[color] || {},
-                          size,
-                        );
-
-                        const stock = variantDrafts[color]?.[size] ?? 0;
-
-                        return (
-                          <div
-                            key={size}
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          flexWrap: "wrap",
+                          gap: 16,
+                          padding: "14px 16px",
+                        }}
+                      >
+                        <div
+                          style={{
+                            display: "flex",
+                            gap: 12,
+                            alignItems: "center",
+                            minWidth: 280,
+                          }}
+                        >
+                          <img
+                            src={item.images?.[0] || defaultImage}
+                            alt={item.name}
                             style={{
-                              border: selected
-                                ? "1px solid #18333a"
-                                : "1px solid #ddd",
-                              borderRadius: 6,
-                              padding: 8,
+                              width: 52,
+                              height: 64,
+                              objectFit: "cover",
+                              borderRadius: 5,
                             }}
-                          >
-                            <label
+                          />
+
+                          <div>
+                            <div
                               style={{
                                 display: "flex",
-                                gap: 6,
+                                gap: 8,
                                 alignItems: "center",
+                              }}
+                            >
+                              <strong>{item.name}</strong>
+
+                              <span
+                                style={{
+                                  fontSize: 11,
+                                  background: "#eee",
+                                  padding: "2px 6px",
+                                  borderRadius: 4,
+                                }}
+                              >
+                                {item.category}
+                              </span>
+                            </div>
+
+                            <div
+                              style={{
+                                color: "#777",
+                                fontSize: 12,
+                                marginTop: 5,
+                              }}
+                            >
+                              {colors.length} color
+                              {colors.length !== 1 ? "es" : ""} · {sizes.length}{" "}
+                              talla
+                              {sizes.length !== 1 ? "s" : ""} ·{" "}
+                              {item.variants.length} variantes
+                            </div>
+
+                            <div
+                              style={{
+                                color: "#777",
                                 fontSize: 12,
                               }}
                             >
-                              <input
-                                type="checkbox"
-                                checked={selected}
-                                onChange={() => toggleSize(color, size)}
-                              />
+                              Stock total:{" "}
+                              <strong
+                                style={{
+                                  color: "#18333a",
+                                }}
+                              >
+                                {total}
+                              </strong>
+                            </div>
+                          </div>
+                        </div>
 
-                              {size}
-                            </label>
+                        {/* PRECIOS */}
+                        <div
+                          style={{
+                            display: "flex",
+                            gap: 18,
+                            flexWrap: "wrap",
+                            fontSize: 12,
+                          }}
+                        >
+                          <div>
+                            <small>Precio publicado</small>
 
-                            {selected && (
-                              <>
-                                <input
-                                  type="number"
-                                  min="0"
-                                  value={stock}
-                                  onChange={(e) =>
-                                    setVariantStock(
-                                      color,
-                                      size,
-                                      Number(e.target.value),
-                                    )
-                                  }
-                                  style={{
-                                    ...inputStyle,
-                                    marginTop: 6,
-                                  }}
-                                />
+                            <strong
+                              style={{
+                                display: "block",
+                              }}
+                            >
+                              ${item.price}
+                            </strong>
 
-                                <small
+                            <span>Bs. {bs}</span>
+                          </div>
+
+                          <div>
+                            <small>Pagando en $</small>
+
+                            <strong
+                              style={{
+                                display: "block",
+                                fontSize: 16,
+                              }}
+                            >
+                              ${item.dollarPrice.toFixed(2)}
+                            </strong>
+
+                            <span
+                              style={{
+                                color: "#18333a",
+                                fontWeight: 600,
+                              }}
+                            >
+                              {discountPercent}% OFF
+                            </span>
+                          </div>
+
+                          <div>
+                            <small>Costo / Ganancia</small>
+
+                            <span
+                              style={{
+                                display: "block",
+                              }}
+                            >
+                              ${item.cost} / <strong>${profit}</strong>
+                            </span>
+
+                            <small>Margen {margin}%</small>
+                          </div>
+                        </div>
+
+                        {/* ACCIONES */}
+                        <div
+                          style={{
+                            display: "flex",
+                            gap: 7,
+                            alignItems: "center",
+                            flexWrap: "wrap",
+                          }}
+                        >
+                          <button
+                            onClick={() => toggleVisibility(item.id)}
+                            style={{
+                              padding: "5px 8px",
+                              borderRadius: 12,
+                              border: "1px solid #ccc",
+                              background: item.webVisible ? "#e8f5e9" : "#f5f5f5",
+                              cursor: "pointer",
+                              fontSize: 11,
+                            }}
+                          >
+                            {item.webVisible ? "● Web: Visible" : "○ Web: Oculto"}
+                          </button>
+
+                          <button
+                            onClick={() => toggleExpanded(item.id)}
+                            style={{
+                              padding: "6px 10px",
+                              border: "1px solid #ccc",
+                              borderRadius: 5,
+                              background: "#fff",
+                              cursor: "pointer",
+                              fontSize: 12,
+                            }}
+                          >
+                            {expanded ? "Ocultar variantes ▲" : "Ver variantes ▼"}
+                          </button>
+
+                          <button
+                            onClick={() => openEditModal(item)}
+                            style={{
+                              padding: "6px 10px",
+                              border: "1px solid #ccc",
+                              borderRadius: 5,
+                              background: "#fff",
+                              cursor: "pointer",
+                            }}
+                          >
+                            ✏️ Editar
+                          </button>
+
+                          <button
+                            onClick={() => deleteProduct(item.id)}
+                            style={{
+                              padding: "6px 10px",
+                              border: "1px solid #ffcdd2",
+                              color: "#d32f2f",
+                              borderRadius: 5,
+                              background: "#fff",
+                              cursor: "pointer",
+                            }}
+                          >
+                            🗑️
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* VARIANTES */}
+                      {expanded && (
+                        <div
+                          style={{
+                            borderTop: "1px solid #eee",
+                            padding: 16,
+                            background: "#fafafa",
+                          }}
+                        >
+                          <div
+                            style={{
+                              display: "grid",
+                              gap: 8,
+                            }}
+                          >
+                            {item.variants.map((v) => (
+                              <div
+                                key={v.id}
+                                style={{
+                                  display: "grid",
+                                  gridTemplateColumns: "1.2fr .8fr 2fr auto",
+                                  gap: 10,
+                                  alignItems: "center",
+                                  padding: "9px 10px",
+                                  background: "#fff",
+                                  border: "1px solid #eee",
+                                  borderRadius: 6,
+                                  fontSize: 12,
+                                }}
+                              >
+                                <strong>{v.color}</strong>
+
+                                <span>{v.size}</span>
+
+                                <span
                                   style={{
                                     color: "#777",
                                   }}
                                 >
-                                  SKU:{" "}
-                                  {makeSku(formName || "PRODUCTO", color, size)}
-                                </small>
-                              </>
-                            )}
+                                  SKU: {v.sku}
+                                </span>
+
+                                <div
+                                  style={{
+                                    display: "flex",
+                                    alignItems: "center",
+                                    gap: 5,
+                                  }}
+                                >
+                                  <button
+                                    onClick={() => updateStock(item.id, v.id, -1)}
+                                    disabled={v.stock <= 0}
+                                    style={{
+                                      width: 25,
+                                      height: 25,
+                                      border: 0,
+                                      cursor: "pointer",
+                                    }}
+                                  >
+                                    −
+                                  </button>
+
+                                  <strong
+                                    style={{
+                                      minWidth: 22,
+                                      textAlign: "center",
+                                    }}
+                                  >
+                                    {v.stock}
+                                  </strong>
+
+                                  <button
+                                    onClick={() => updateStock(item.id, v.id, 1)}
+                                    style={{
+                                      width: 25,
+                                      height: 25,
+                                      border: 0,
+                                      cursor: "pointer",
+                                    }}
+                                  >
+                                    +
+                                  </button>
+                                </div>
+                              </div>
+                            ))}
                           </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                ))}
-              </section>
+                        </div>
+                      )}
+                    </article>
+                  );
+                })
+              )}
+            </div>
+          </>
+        ) : (
+          /* HISTORIAL */
+          <div
+            style={{
+              background: "#fff",
+              border: "1px solid #eee",
+              borderRadius: 8,
+              padding: 16,
+              overflowX: "auto",
+            }}
+          >
+            <h3>Historial de Entradas</h3>
 
-              {/* FECHA */}
-              <section style={sectionStyle}>
-                <h3 style={sectionTitle}>3. Fecha de llegada del stock</h3>
-
-                <label
+            <table
+              style={{
+                width: "100%",
+                borderCollapse: "collapse",
+                fontSize: 13,
+              }}
+            >
+              <thead>
+                <tr
                   style={{
-                    display: "grid",
-                    gap: 6,
-                    fontSize: 13,
+                    textAlign: "left",
+                    borderBottom: "2px solid #eee",
                   }}
                 >
-                  <span>Fecha de llegada</span>
+                  <th>Fecha</th>
+                  <th>Producto</th>
+                  <th>Color</th>
+                  <th>Talla</th>
+                  <th>SKU</th>
+                  <th>Cantidad</th>
+                </tr>
+              </thead>
 
-                  <input
-                    type="date"
-                    value={formArrivalDate}
-                    onChange={(e) => setFormArrivalDate(e.target.value)}
-                    style={inputStyle}
-                  />
-                </label>
-
-                <p
-                  style={{
-                    fontSize: 12,
-                    color: "#777",
-                    marginBottom: 0,
-                  }}
-                >
-                  Esta fecha se guardará en el historial cuando entre stock.
-                </p>
-              </section>
-
-              {/* FOTOS */}
-              <section style={sectionStyle}>
-                <h3 style={sectionTitle}>4. Fotos del producto</h3>
-
-                <input
-                  type="file"
-                  accept="image/*"
-                  multiple
-                  disabled={uploadingImages}
-                  onChange={handleImageFiles}
-                />
-
-                {uploadingImages && (
-                  <p style={{ fontSize: 12, color: "#18333a", marginTop: 6 }}>
-                    Subiendo fotos...
-                  </p>
-                )}
-
-                <div
-                  style={{
-                    display: "flex",
-                    gap: 6,
-                    marginTop: 8,
-                  }}
-                >
-                  <input
-                    type="url"
-                    value={imageUrlInput}
-                    onChange={(e) => setImageUrlInput(e.target.value)}
-                    placeholder="Pegar URL de imagen"
+              <tbody>
+                {history.map((h) => (
+                  <tr
+                    key={h.id}
                     style={{
-                      ...inputStyle,
-                      flex: 1,
-                    }}
-                  />
-
-                  <button
-                    type="button"
-                    onClick={() =>
-                      addUrl(imageUrlInput, setFormImages, setImageUrlInput)
-                    }
-                    style={secondaryBtn}
-                  >
-                    Añadir
-                  </button>
-                </div>
-
-                <Preview
-                  images={formImages}
-                  remove={(i) =>
-                    setFormImages((p) => p.filter((_, x) => x !== i))
-                  }
-                />
-              </section>
-
-              {/* GALERÍA ESPECÍFICA POR COLOR */}
-              <section style={sectionStyle}>
-                <h3 style={sectionTitle}>5. Fotos por color</h3>
-                <p style={{ fontSize: 12, color: "#777", marginTop: 0 }}>
-                  Sube las fotos de cada color por separado. Si un color no
-                  tiene fotos aquí, la tienda utilizará las fotos generales del
-                  producto.
-                </p>
-                {formColors.length === 0 && (
-                  <p style={{ fontSize: 13, color: "#777" }}>
-                    Agrega primero los colores del producto.
-                  </p>
-                )}
-                {formColors.map((color) => (
-                  <div
-                    key={color}
-                    style={{
-                      border: "1px solid #e5e5e5",
-                      padding: 12,
-                      borderRadius: 6,
-                      marginBottom: 14,
+                      borderBottom: "1px solid #f0f0f0",
                     }}
                   >
-                    <strong style={{ display: "block", marginBottom: 8 }}>
-                      {color}
-                    </strong>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      multiple
-                      disabled={uploadingImages}
-                      onChange={(e) => {
-                        const files = e.target.files;
-                        if (!files?.length) return;
-                        const fileArray = Array.from(files);
-                        e.target.value = "";
-                        uploadFilesToStorage(
-                          fileArray,
-                          (updater) =>
-                            setFormColorPhotos((prev) => {
-                              const oldUrls = prev[color] || [];
-                              const nextUrls =
-                                typeof updater === "function"
-                                  ? updater(oldUrls)
-                                  : updater;
-                              return { ...prev, [color]: nextUrls };
-                            }),
-                          setUploadingImages,
-                        );
-                      }}
-                    />
-                    <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
-                      <input
-                        type="url"
-                        value={colorPhotoUrlInputs[color] || ""}
-                        onChange={(e) =>
-                          setColorPhotoUrlInputs((prev) => ({
-                            ...prev,
-                            [color]: e.target.value,
-                          }))
-                        }
-                        placeholder={`URL de foto para ${color}`}
-                        style={{ ...inputStyle, flex: 1 }}
-                      />
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const url = (colorPhotoUrlInputs[color] || "").trim();
-                          if (!url) return;
-                          setFormColorPhotos((prev) => ({
-                            ...prev,
-                            [color]: [...(prev[color] || []), url],
-                          }));
-                          setColorPhotoUrlInputs((prev) => ({
-                            ...prev,
-                            [color]: "",
-                          }));
-                        }}
-                        style={secondaryBtn}
-                      >
-                        Añadir
-                      </button>
-                    </div>
-                    <div
+                    <td>{h.arrivalDate || h.date.split("T")[0]}</td>
+
+                    <td>{h.productName}</td>
+
+                    <td>{h.color}</td>
+
+                    <td>{h.size}</td>
+
+                    <td>{h.sku}</td>
+
+                    <td
                       style={{
-                        display: "grid",
-                        gridTemplateColumns:
-                          "repeat(auto-fill, minmax(190px, 1fr))",
-                        gap: 12,
-                        marginTop: 12,
+                        color: "green",
+                        fontWeight: 700,
                       }}
                     >
-                      {(formColorPhotos[color] || []).map((url, index) => {
-                        const position = formColorPhotoPositions[color]?.[
-                          url
-                        ] || { x: 50, y: 50 };
-                        const updatePosition = (
-                          axis: "x" | "y",
-                          value: number,
-                        ) => {
-                          setFormColorPhotoPositions((prev) => ({
-                            ...prev,
-                            [color]: {
-                              ...(prev[color] || {}),
-                              [url]: {
-                                ...(prev[color]?.[url] || { x: 50, y: 50 }),
-                                [axis]: value,
-                              },
-                            },
-                          }));
-                        };
-                        const removePhoto = () => {
-                          setFormColorPhotos((prev) => ({
-                            ...prev,
-                            [color]: (prev[color] || []).filter(
-                              (_, i) => i !== index,
-                            ),
-                          }));
-                          setFormColorPhotoPositions((prev) => {
-                            const nextColorPositions = {
-                              ...(prev[color] || {}),
-                            };
-                            delete nextColorPositions[url];
-                            return { ...prev, [color]: nextColorPositions };
-                          });
-                        };
-                        return (
-                          <div
-                            key={`${url}-${index}`}
-                            style={{
-                              border: "1px solid #e5e5e5",
-                              borderRadius: 8,
-                              padding: 10,
-                            }}
-                          >
-                            <div
-                              style={{
-                                position: "relative",
-                                width: "100%",
-                                aspectRatio: "3 / 4",
-                                overflow: "hidden",
-                                borderRadius: 5,
-                                background: "#f2f0eb",
-                              }}
-                            >
-                              <img
-                                src={url}
-                                alt={`Foto ${index + 1} de ${color}`}
-                                style={{
-                                  width: "100%",
-                                  height: "100%",
-                                  objectFit: "cover",
-                                  objectPosition: `${position.x}% ${position.y}%`,
-                                  display: "block",
-                                }}
-                              />
-                              <button
-                                type="button"
-                                onClick={removePhoto}
-                                aria-label={`Eliminar foto ${index + 1} de ${color}`}
-                                style={{
-                                  position: "absolute",
-                                  top: 6,
-                                  right: 6,
-                                  border: 0,
-                                  borderRadius: "50%",
-                                  background: "rgba(0,0,0,.72)",
-                                  color: "white",
-                                  width: 26,
-                                  height: 26,
-                                  cursor: "pointer",
-                                  fontSize: 18,
-                                }}
-                              >
-                                ×
-                              </button>
-                            </div>
-                            <div
-                              style={{
-                                fontSize: 12,
-                                marginTop: 8,
-                                color: "#444",
-                              }}
-                            >
-                              <label
-                                style={{
-                                  display: "flex",
-                                  justifyContent: "space-between",
-                                  gap: 8,
-                                }}
-                              >
-                                <span>Horizontal</span>
-                                <strong>{position.x}%</strong>
-                              </label>
-                              <input
-                                type="range"
-                                min={0}
-                                max={100}
-                                step={1}
-                                value={position.x}
-                                onChange={(e) =>
-                                  updatePosition("x", Number(e.target.value))
-                                }
-                                style={{ width: "100%", accentColor: "#111" }}
-                              />
-                            </div>
-                            <div
-                              style={{
-                                fontSize: 12,
-                                marginTop: 5,
-                                color: "#444",
-                              }}
-                            >
-                              <label
-                                style={{
-                                  display: "flex",
-                                  justifyContent: "space-between",
-                                  gap: 8,
-                                }}
-                              >
-                                <span>Vertical</span>
-                                <strong>{position.y}%</strong>
-                              </label>
-                              <input
-                                type="range"
-                                min={0}
-                                max={100}
-                                step={1}
-                                value={position.y}
-                                onChange={(e) =>
-                                  updatePosition("y", Number(e.target.value))
-                                }
-                                style={{ width: "100%", accentColor: "#111" }}
-                              />
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                updatePosition("x", 50);
-                                updatePosition("y", 50);
-                              }}
-                              style={{
-                                ...secondaryBtn,
-                                width: "100%",
-                                marginTop: 6,
-                                fontSize: 11,
-                              }}
-                            >
-                              Centrar imagen
-                            </button>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
+                      +{h.quantity}
+                    </td>
+                  </tr>
                 ))}
-              </section>
+              </tbody>
+            </table>
 
-              {/* GUÍA */}
-              <section style={sectionStyle}>
-                <h3 style={sectionTitle}>6. Guía de tallas</h3>
-
-                <input
-                  type="file"
-                  accept="image/*"
-                  multiple
-                  disabled={uploadingGuide}
-                  onChange={handleGuideFiles}
-                />
-
-                {uploadingGuide && (
-                  <p style={{ fontSize: 12, color: "#18333a", marginTop: 6 }}>
-                    Subiendo fotos...
-                  </p>
-                )}
-
-                <div
-                  style={{
-                    display: "flex",
-                    gap: 6,
-                    marginTop: 8,
-                  }}
-                >
-                  <input
-                    type="url"
-                    value={guideUrlInput}
-                    onChange={(e) => setGuideUrlInput(e.target.value)}
-                    placeholder="Pegar URL de guía de tallas"
-                    style={{
-                      ...inputStyle,
-                      flex: 1,
-                    }}
-                  />
-
-                  <button
-                    type="button"
-                    onClick={() =>
-                      addUrl(
-                        guideUrlInput,
-                        setFormGuideImages,
-                        setGuideUrlInput,
-                      )
-                    }
-                    style={secondaryBtn}
-                  >
-                    Añadir
-                  </button>
-                </div>
-
-                <Preview
-                  images={formGuideImages}
-                  remove={(i) =>
-                    setFormGuideImages((p) => p.filter((_, x) => x !== i))
-                  }
-                />
-              </section>
-
-              {/* CUIDADO */}
-              <section style={sectionStyle}>
-                <h3 style={sectionTitle}>6. Detalles de cuidado</h3>
-
-                <textarea
-                  value={formCare}
-                  onChange={(e) => setFormCare(e.target.value)}
-                  placeholder="Ej. Lavar a mano con agua fría. No usar secadora..."
-                  rows={5}
-                  style={{
-                    ...inputStyle,
-                    resize: "vertical",
-                  }}
-                />
-              </section>
-
-              {/* VISIBILIDAD */}
-              <label
+            {history.length === 0 && (
+              <p
                 style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 8,
-                  background: "#f9f9f9",
-                  padding: 10,
-                  borderRadius: 6,
+                  color: "#888",
                 }}
               >
-                <input
-                  type="checkbox"
-                  checked={formWebVisible}
-                  onChange={(e) => setFormWebVisible(e.target.checked)}
-                />
-                Publicar y hacer visible en NavyWeb
-              </label>
+                No hay registros.
+              </p>
+            )}
+          </div>
+        )}
 
-              {/* BOTONES */}
+        {/* MODAL */}
+        {isModalOpen && (
+          <div
+            style={{
+              position: "fixed",
+              inset: 0,
+              background: "rgba(0,0,0,.45)",
+              display: "flex",
+              justifyContent: "center",
+              alignItems: "center",
+              zIndex: 1000,
+              padding: 15,
+            }}
+          >
+            <div
+              style={{
+                background: "#fff",
+                borderRadius: 12,
+                padding: 24,
+                width: "min(700px, 100%)",
+                maxHeight: "92vh",
+                overflowY: "auto",
+              }}
+            >
               <div
                 style={{
                   display: "flex",
-                  justifyContent: "flex-end",
-                  gap: 8,
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  borderBottom: "1px solid #eee",
+                  paddingBottom: 12,
+                  marginBottom: 16,
                 }}
               >
+                <h2
+                  style={{
+                    margin: 0,
+                    fontSize: 20,
+                  }}
+                >
+                  {editingItem ? "Editar Prenda" : "Nueva Prenda"}
+                </h2>
+
                 <button
-                  type="button"
                   onClick={() => {
                     setIsModalOpen(false);
                     resetForm();
                   }}
-                  style={secondaryBtn}
+                  style={{
+                    border: 0,
+                    background: "none",
+                    fontSize: 20,
+                    cursor: "pointer",
+                  }}
                 >
-                  Cancelar
-                </button>
-
-                <button
-                  type="submit"
-                  style={primaryBtn}
-                  disabled={uploadingImages || uploadingGuide}
-                >
-                  {editingItem ? "Guardar Cambios" : "Crear Producto"}
+                  ✕
                 </button>
               </div>
-            </form>
+
+              <form
+                onSubmit={saveProduct}
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 16,
+                }}
+              >
+                {/* NOMBRE */}
+                <div>
+                  <label>Nombre del producto *</label>
+
+                  <input
+                    required
+                    value={formName}
+                    onChange={(e) => setFormName(e.target.value)}
+                    placeholder="Ej. Luna Top"
+                    style={inputStyle}
+                  />
+                </div>
+
+                {/* CATEGORÍA + COSTO */}
+                <div style={grid2}>
+                  <div>
+                    <label>Categoría</label>
+
+                    <select
+                      value={formCategory}
+                      onChange={(e) => setFormCategory(e.target.value)}
+                      style={inputStyle}
+                    >
+                      {categoriesList
+                        .filter((x) => x !== "Todos")
+                        .map((c) => (
+                          <option key={c}>{c}</option>
+                        ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label>Costo USD *</label>
+
+                    <input
+                      required
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={formCost}
+                      onChange={(e) =>
+                        setFormCost(
+                          e.target.value === "" ? "" : Number(e.target.value),
+                        )
+                      }
+                      style={inputStyle}
+                    />
+                  </div>
+                </div>
+
+                {/* PRECIO EN DÓLARES */}
+                <div
+                  style={{
+                    padding: 14,
+                    borderRadius: 8,
+                    background: "#f8f6f1",
+                    border: "1px solid #eee",
+                  }}
+                >
+                  <label
+                    style={{
+                      display: "block",
+                      fontWeight: 600,
+                    }}
+                  >
+                    Precio pagando en $ *
+                  </label>
+
+                  <input
+                    required
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={formDollarPrice}
+                    onChange={(e) =>
+                      setFormDollarPrice(
+                        e.target.value === "" ? "" : Number(e.target.value),
+                      )
+                    }
+                    placeholder="Ej. 25"
+                    style={inputStyle}
+                  />
+                </div>
+
+                {/* PRECIO PUBLICADO */}
+                <div
+                  style={{
+                    padding: 14,
+                    borderRadius: 8,
+                    background: "#eef3f3",
+                    border: "1px solid #dce5e5",
+                  }}
+                >
+                  <div
+                    style={{
+                      fontSize: 12,
+                      color: "#666",
+                    }}
+                  >
+                    Precio publicado automático
+                  </div>
+
+                  <strong
+                    style={{
+                      fontSize: 26,
+                      display: "block",
+                      marginTop: 2,
+                    }}
+                  >
+                    {formDollarPrice !== "" && tasaBnc > 0 && tasaBcv > 0
+                      ? `$${calculatePublishedPrice(Number(formDollarPrice))}`
+                      : "—"}
+                  </strong>
+
+                  {formDollarPrice !== "" && tasaBnc > 0 && tasaBcv > 0 && (
+                    <div
+                      style={{
+                        marginTop: 8,
+                        fontSize: 13,
+                        fontWeight: 600,
+                      }}
+                    >
+                      Pagando en $: ${Number(formDollarPrice).toFixed(2)} ·{" "}
+                      {discountPercent}% OFF
+                    </div>
+                  )}
+                </div>
+
+                {/* COLORES */}
+                <section style={sectionStyle}>
+                  <h3 style={sectionTitle}>1. Colores</h3>
+
+                  <div
+                    style={{
+                      display: "flex",
+                      gap: 8,
+                    }}
+                  >
+                    <input
+                      value={newColor}
+                      onChange={(e) => setNewColor(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          addColor();
+                        }
+                      }}
+                      placeholder="Ej. Navy, Ivory, Pink"
+                      style={{
+                        ...inputStyle,
+                        flex: 1,
+                      }}
+                    />
+
+                    <button type="button" onClick={addColor} style={secondaryBtn}>
+                      + Agregar
+                    </button>
+                  </div>
+
+                  <div
+                    style={{
+                      display: "flex",
+                      gap: 7,
+                      flexWrap: "wrap",
+                      marginTop: 10,
+                    }}
+                  >
+                    {formColors.map((c) => (
+                      <span
+                        key={c}
+                        style={{
+                          background: "#eef3f3",
+                          padding: "6px 9px",
+                          borderRadius: 15,
+                          fontSize: 12,
+                        }}
+                      >
+                        {c}{" "}
+                        <button
+                          type="button"
+                          onClick={() => removeColor(c)}
+                          style={{
+                            border: 0,
+                            background: "none",
+                            cursor: "pointer",
+                          }}
+                        >
+                          ×
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                </section>
+
+                {/* TALLAS */}
+                <section style={sectionStyle}>
+                  <h3 style={sectionTitle}>2. Tallas y stock</h3>
+
+                  <p
+                    style={{
+                      fontSize: 12,
+                      color: "#777",
+                      marginTop: 0,
+                    }}
+                  >
+                    Selecciona las tallas disponibles para cada color. El SKU se
+                    genera automáticamente.
+                  </p>
+
+                  {formColors.length === 0 && (
+                    <p
+                      style={{
+                        color: "#999",
+                        fontSize: 13,
+                      }}
+                    >
+                      Agrega primero un color.
+                    </p>
+                  )}
+
+                  {formColors.map((color) => (
+                    <div
+                      key={color}
+                      style={{
+                        border: "1px solid #eee",
+                        borderRadius: 8,
+                        padding: 12,
+                        marginBottom: 10,
+                      }}
+                    >
+                      <strong>{color}</strong>
+
+                      <div
+                        style={{
+                          display: "grid",
+                          gridTemplateColumns:
+                            "repeat(auto-fit,minmax(120px,1fr))",
+                          gap: 8,
+                          marginTop: 10,
+                        }}
+                      >
+                        {sizesList.map((size) => {
+                          const selected = Object.prototype.hasOwnProperty.call(
+                            variantDrafts[color] || {},
+                            size,
+                          );
+
+                          const stock = variantDrafts[color]?.[size] ?? 0;
+
+                          return (
+                            <div
+                              key={size}
+                              style={{
+                                border: selected
+                                  ? "1px solid #18333a"
+                                  : "1px solid #ddd",
+                                borderRadius: 6,
+                                padding: 8,
+                              }}
+                            >
+                              <label
+                                style={{
+                                  display: "flex",
+                                  gap: 6,
+                                  alignItems: "center",
+                                  fontSize: 12,
+                                }}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={selected}
+                                  onChange={() => toggleSize(color, size)}
+                                />
+
+                                {size}
+                              </label>
+
+                              {selected && (
+                                <>
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    value={stock}
+                                    onChange={(e) =>
+                                      setVariantStock(
+                                        color,
+                                        size,
+                                        Number(e.target.value),
+                                      )
+                                    }
+                                    style={{
+                                      ...inputStyle,
+                                      marginTop: 6,
+                                    }}
+                                  />
+
+                                  <small
+                                    style={{
+                                      color: "#777",
+                                    }}
+                                  >
+                                    SKU:{" "}
+                                    {makeSku(formName || "PRODUCTO", color, size)}
+                                  </small>
+                                </>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                </section>
+
+                {/* FECHA */}
+                <section style={sectionStyle}>
+                  <h3 style={sectionTitle}>3. Fecha de llegada del stock</h3>
+
+                  <label
+                    style={{
+                      display: "grid",
+                      gap: 6,
+                      fontSize: 13,
+                    }}
+                  >
+                    <span>Fecha de llegada</span>
+
+                    <input
+                      type="date"
+                      value={formArrivalDate}
+                      onChange={(e) => setFormArrivalDate(e.target.value)}
+                      style={inputStyle}
+                    />
+                  </label>
+
+                  <p
+                    style={{
+                      fontSize: 12,
+                      color: "#777",
+                      marginBottom: 0,
+                    }}
+                  >
+                    Esta fecha se guardará en el historial cuando entre stock.
+                  </p>
+                </section>
+
+                {/* FOTOS */}
+                <section style={sectionStyle}>
+                  <h3 style={sectionTitle}>4. Fotos del producto</h3>
+
+                  <input
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    disabled={uploadingImages}
+                    onChange={handleImageFiles}
+                  />
+
+                  {uploadingImages && (
+                    <p style={{ fontSize: 12, color: "#18333a", marginTop: 6 }}>
+                      Subiendo fotos...
+                    </p>
+                  )}
+
+                  <div
+                    style={{
+                      display: "flex",
+                      gap: 6,
+                      marginTop: 8,
+                    }}
+                  >
+                    <input
+                      type="url"
+                      value={imageUrlInput}
+                      onChange={(e) => setImageUrlInput(e.target.value)}
+                      placeholder="Pegar URL de imagen"
+                      style={{
+                        ...inputStyle,
+                        flex: 1,
+                      }}
+                    />
+
+                    <button
+                      type="button"
+                      onClick={() =>
+                        addUrl(imageUrlInput, setFormImages, setImageUrlInput)
+                      }
+                      style={secondaryBtn}
+                    >
+                      Añadir
+                    </button>
+                  </div>
+
+                  <Preview
+                    images={formImages}
+                    remove={(i) =>
+                      setFormImages((p) => p.filter((_, x) => x !== i))
+                    }
+                  />
+                </section>
+
+                {/* GALERÍA ESPECÍFICA POR COLOR */}
+                <section style={sectionStyle}>
+                  <h3 style={sectionTitle}>5. Fotos por color</h3>
+                  <p style={{ fontSize: 12, color: "#777", marginTop: 0 }}>
+                    Sube las fotos de cada color por separado. Si un color no
+                    tiene fotos aquí, la tienda utilizará las fotos generales del
+                    producto.
+                  </p>
+                  {formColors.length === 0 && (
+                    <p style={{ fontSize: 13, color: "#777" }}>
+                      Agrega primero los colores del producto.
+                    </p>
+                  )}
+                  {formColors.map((color) => (
+                    <div
+                      key={color}
+                      style={{
+                        border: "1px solid #e5e5e5",
+                        padding: 12,
+                        borderRadius: 6,
+                        marginBottom: 14,
+                      }}
+                    >
+                      <strong style={{ display: "block", marginBottom: 8 }}>
+                        {color}
+                      </strong>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        multiple
+                        disabled={uploadingImages}
+                        onChange={(e) => {
+                          const files = e.target.files;
+                          if (!files?.length) return;
+                          const fileArray = Array.from(files);
+                          e.target.value = "";
+                          uploadFilesToStorage(
+                            fileArray,
+                            (updater) =>
+                              setFormColorPhotos((prev) => {
+                                const oldUrls = prev[color] || [];
+                                const nextUrls =
+                                  typeof updater === "function"
+                                    ? updater(oldUrls)
+                                    : updater;
+                                return { ...prev, [color]: nextUrls };
+                              }),
+                            setUploadingImages,
+                          );
+                        }}
+                      />
+                      <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
+                        <input
+                          type="url"
+                          value={colorPhotoUrlInputs[color] || ""}
+                          onChange={(e) =>
+                            setColorPhotoUrlInputs((prev) => ({
+                              ...prev,
+                              [color]: e.target.value,
+                            }))
+                          }
+                          placeholder={`URL de foto para ${color}`}
+                          style={{ ...inputStyle, flex: 1 }}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const url = (colorPhotoUrlInputs[color] || "").trim();
+                            if (!url) return;
+                            setFormColorPhotos((prev) => ({
+                              ...prev,
+                              [color]: [...(prev[color] || []), url],
+                            }));
+                            setColorPhotoUrlInputs((prev) => ({
+                              ...prev,
+                              [color]: "",
+                            }));
+                          }}
+                          style={secondaryBtn}
+                        >
+                          Añadir
+                        </button>
+                      </div>
+                      <div
+                        style={{
+                          display: "grid",
+                          gridTemplateColumns:
+                            "repeat(auto-fill, minmax(190px, 1fr))",
+                          gap: 12,
+                          marginTop: 12,
+                        }}
+                      >
+                        {(formColorPhotos[color] || []).map((url, index) => {
+                          const position = formColorPhotoPositions[color]?.[
+                            url
+                          ] || { x: 50, y: 50 };
+                          const updatePosition = (
+                            axis: "x" | "y",
+                            value: number,
+                          ) => {
+                            setFormColorPhotoPositions((prev) => ({
+                              ...prev,
+                              [color]: {
+                                ...(prev[color] || {}),
+                                [url]: {
+                                  ...(prev[color]?.[url] || { x: 50, y: 50 }),
+                                  [axis]: value,
+                                },
+                              },
+                            }));
+                          };
+                          const removePhoto = () => {
+                            setFormColorPhotos((prev) => ({
+                              ...prev,
+                              [color]: (prev[color] || []).filter(
+                                (_, i) => i !== index,
+                              ),
+                            }));
+                            setFormColorPhotoPositions((prev) => {
+                              const nextColorPositions = {
+                                ...(prev[color] || {}),
+                              };
+                              delete nextColorPositions[url];
+                              return { ...prev, [color]: nextColorPositions };
+                            });
+                          };
+                          return (
+                            <div
+                              key={`${url}-${index}`}
+                              style={{
+                                border: "1px solid #e5e5e5",
+                                borderRadius: 8,
+                                padding: 10,
+                              }}
+                            >
+                              <div
+                                style={{
+                                  position: "relative",
+                                  width: "100%",
+                                  aspectRatio: "3 / 4",
+                                  overflow: "hidden",
+                                  borderRadius: 5,
+                                  background: "#f2f0eb",
+                                }}
+                              >
+                                <img
+                                  src={url}
+                                  alt={`Foto ${index + 1} de ${color}`}
+                                  style={{
+                                    width: "100%",
+                                    height: "100%",
+                                    objectFit: "cover",
+                                    objectPosition: `${position.x}% ${position.y}%`,
+                                    display: "block",
+                                  }}
+                                />
+                                <button
+                                  type="button"
+                                  onClick={removePhoto}
+                                  aria-label={`Eliminar foto ${index + 1} de ${color}`}
+                                  style={{
+                                    position: "absolute",
+                                    top: 6,
+                                    right: 6,
+                                    border: 0,
+                                    borderRadius: "50%",
+                                    background: "rgba(0,0,0,.72)",
+                                    color: "white",
+                                    width: 26,
+                                    height: 26,
+                                    cursor: "pointer",
+                                    fontSize: 18,
+                                  }}
+                                >
+                                  ×
+                                </button>
+                              </div>
+                              <div
+                                style={{
+                                  fontSize: 12,
+                                  marginTop: 8,
+                                  color: "#444",
+                                }}
+                              >
+                                <label
+                                  style={{
+                                    display: "flex",
+                                    justifyContent: "space-between",
+                                    gap: 8,
+                                  }}
+                                >
+                                  <span>Horizontal</span>
+                                  <strong>{position.x}%</strong>
+                                </label>
+                                <input
+                                  type="range"
+                                  min={0}
+                                  max={100}
+                                  step={1}
+                                  value={position.x}
+                                  onChange={(e) =>
+                                    updatePosition("x", Number(e.target.value))
+                                  }
+                                  style={{ width: "100%", accentColor: "#111" }}
+                                />
+                              </div>
+                              <div
+                                style={{
+                                  fontSize: 12,
+                                  marginTop: 5,
+                                  color: "#444",
+                                }}
+                              >
+                                <label
+                                  style={{
+                                    display: "flex",
+                                    justifyContent: "space-between",
+                                    gap: 8,
+                                  }}
+                                >
+                                  <span>Vertical</span>
+                                  <strong>{position.y}%</strong>
+                                </label>
+                                <input
+                                  type="range"
+                                  min={0}
+                                  max={100}
+                                  step={1}
+                                  value={position.y}
+                                  onChange={(e) =>
+                                    updatePosition("y", Number(e.target.value))
+                                  }
+                                  style={{ width: "100%", accentColor: "#111" }}
+                                />
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  updatePosition("x", 50);
+                                  updatePosition("y", 50);
+                                }}
+                                style={{
+                                  ...secondaryBtn,
+                                  width: "100%",
+                                  marginTop: 6,
+                                  fontSize: 11,
+                                }}
+                              >
+                                Centrar imagen
+                              </button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                </section>
+
+                {/* GUÍA */}
+                <section style={sectionStyle}>
+                  <h3 style={sectionTitle}>6. Guía de tallas</h3>
+
+                  <input
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    disabled={uploadingGuide}
+                    onChange={handleGuideFiles}
+                  />
+
+                  {uploadingGuide && (
+                    <p style={{ fontSize: 12, color: "#18333a", marginTop: 6 }}>
+                      Subiendo fotos...
+                    </p>
+                  )}
+
+                  <div
+                    style={{
+                      display: "flex",
+                      gap: 6,
+                      marginTop: 8,
+                    }}
+                  >
+                    <input
+                      type="url"
+                      value={guideUrlInput}
+                      onChange={(e) => setGuideUrlInput(e.target.value)}
+                      placeholder="Pegar URL de guía de tallas"
+                      style={{
+                        ...inputStyle,
+                        flex: 1,
+                      }}
+                    />
+
+                    <button
+                      type="button"
+                      onClick={() =>
+                        addUrl(
+                          guideUrlInput,
+                          setFormGuideImages,
+                          setGuideUrlInput,
+                        )
+                      }
+                      style={secondaryBtn}
+                    >
+                      Añadir
+                    </button>
+                  </div>
+
+                  <Preview
+                    images={formGuideImages}
+                    remove={(i) =>
+                      setFormGuideImages((p) => p.filter((_, x) => x !== i))
+                    }
+                  />
+                </section>
+
+                {/* CUIDADO */}
+                <section style={sectionStyle}>
+                  <h3 style={sectionTitle}>6. Detalles de cuidado</h3>
+
+                  <textarea
+                    value={formCare}
+                    onChange={(e) => setFormCare(e.target.value)}
+                    placeholder="Ej. Lavar a mano con agua fría. No usar secadora..."
+                    rows={5}
+                    style={{
+                      ...inputStyle,
+                      resize: "vertical",
+                    }}
+                  />
+                </section>
+
+                {/* VISIBILIDAD */}
+                <label
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    background: "#f9f9f9",
+                    padding: 10,
+                    borderRadius: 6,
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={formWebVisible}
+                    onChange={(e) => setFormWebVisible(e.target.checked)}
+                  />
+                  Publicar y hacer visible en NavyWeb
+                </label>
+
+                {/* BOTONES */}
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "flex-end",
+                    gap: 8,
+                  }}
+                >
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsModalOpen(false);
+                      resetForm();
+                    }}
+                    style={secondaryBtn}
+                  >
+                    Cancelar
+                  </button>
+
+                  <button
+                    type="submit"
+                    style={primaryBtn}
+                    disabled={uploadingImages || uploadingGuide}
+                  >
+                    {editingItem ? "Guardar Cambios" : "Crear Producto"}
+                  </button>
+                </div>
+              </form>
+            </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </main>
   );
 }
