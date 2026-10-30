@@ -160,8 +160,7 @@ function readCategory(raw: any): string {
 
 /*
   La base de datos guarda cada entrada con "created_at" y "arrival_date".
-  La pantalla espera "date" y "arrivalDate". Sin esto, una fila real de
-  Supabase no tiene "date" y la tabla del historial se rompe al leerla.
+  La pantalla espera "date" y "arrivalDate".
 */
 function normalizeHistoryItem(raw: any): HistoryItem {
   return {
@@ -664,11 +663,6 @@ export default function InventoryPage() {
 
   /*
     Fotos — subida real a Supabase Storage.
-
-    Antes esto usaba URL.createObjectURL(), que solo crea un enlace
-    temporal en la memoria del navegador: se veía bien en pantalla,
-    pero desaparecía al recargar. Ahora cada foto se sube de verdad
-    al bucket "product-images" y guardamos su URL pública real.
   */
   const uploadFilesToStorage = async (
     fileArray: File[],
@@ -677,9 +671,6 @@ export default function InventoryPage() {
   ) => {
     setUploading(true);
 
-    // El try/finally garantiza que setUploading(false) SIEMPRE se ejecute,
-    // aunque algo falle de forma inesperada. Sin esto, un error dejaba el
-    // input de "Fotos" deshabilitado para siempre.
     try {
       for (const file of fileArray) {
         try {
@@ -722,9 +713,7 @@ export default function InventoryPage() {
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
-    // OJO: e.target.files es una lista "en vivo". Hay que copiarla con
-    // Array.from ANTES de limpiar el input, porque e.target.value = ""
-    // también vacía esta misma lista (apuntan al mismo lugar).
+    // Copiamos la lista antes de limpiar el input
     const fileArray = Array.from(files);
     e.target.value = "";
 
@@ -810,9 +799,6 @@ export default function InventoryPage() {
       variants,
     };
 
-    /*
-      Intentamos guardar en el API.
-    */
     try {
       // ¿Este id es un UUID real de Supabase? (los ids temporales no lo son)
       const isUuid = (value: string) =>
@@ -830,10 +816,7 @@ export default function InventoryPage() {
         cost_usd: product.cost,
         category_name: product.category,
         images: product.images,
-        // La guía de tallas contiene URLs públicas de Supabase Storage.
-        // Debe viajar en el payload para que la API la persista en products.
         sizeGuideImages: product.sizeGuideImages,
-        // Los detalles de cuidado se guardan en la columna care_details.
         careDetails: product.careDetails,
         colorPhotos: Object.entries(formColorPhotos).flatMap(([color, urls]) =>
           (urls as string[]).map((url, index) => ({
@@ -864,7 +847,6 @@ export default function InventoryPage() {
       });
 
       if (!response.ok) {
-        // Leemos la respuesta como texto para evitar que falle si el backend responde con HTML o texto plano
         const rawText = await response.text();
         let errorData: any = null;
 
@@ -891,9 +873,7 @@ export default function InventoryPage() {
 
       /*
         Volvemos a pedir el inventario completo a la API.
-        Así traemos los ids reales que generó Supabase
-        (para las prendas y variantes nuevas), en vez de
-        quedarnos con los ids temporales que usamos en pantalla.
+        Así traemos los ids reales que generó Supabase.
       */
       await reloadInventory();
 
@@ -913,9 +893,8 @@ export default function InventoryPage() {
   /*
     Actualizar stock
 
-    Cambia el número en pantalla al instante (para que se sienta rápido)
-    y al mismo tiempo lo guarda en Supabase con la acción "update-stock".
-    Si el guardado falla, revertimos el número en pantalla.
+    Cambia el número en pantalla al instante y lo guarda en Supabase
+    con la acción "update-stock". Si falla, revertimos la pantalla.
   */
   const updateStock = async (
     productId: string,
@@ -977,7 +956,6 @@ export default function InventoryPage() {
           action: "update-stock",
           variantId,
           change: amount,
-          // Solo tiene sentido para entradas (amount > 0)
           arrivalDate: amount > 0 ? arrivalDate : undefined,
         }),
       });
@@ -999,7 +977,6 @@ export default function InventoryPage() {
       );
 
       if (amount > 0) {
-        // Quitamos la entrada de historial que agregamos de más
         setHistory((h) => h.slice(1));
       }
 
@@ -1028,7 +1005,6 @@ export default function InventoryPage() {
         throw new Error(data?.error || `Error ${res.status}`);
       }
 
-      // Solo quitamos la prenda de la pantalla si la base de datos la borró
       setInventory((prev) => prev.filter((p) => p.id !== id));
     } catch (error) {
       alert(
@@ -1105,6 +1081,7 @@ export default function InventoryPage() {
   /*
     HISTORIAL POR MES
     Agrupa las entradas por mes (YYYY-MM), del más reciente al más antiguo.
+    Usa la fecha de llegada; si no existe, la fecha de registro.
   */
   const historyByMonth = (() => {
     const groups = new Map<string, HistoryItem[]>();
@@ -1180,21 +1157,9 @@ export default function InventoryPage() {
           }}
         >
           <div>
-            <h1
-              style={{
-                fontSize: 24,
-                margin: 0,
-              }}
-            >
-              Inventory & Web Control
-            </h1>
+            <h1 style={{ fontSize: 24, margin: 0 }}>Inventory & Web Control</h1>
 
-            <span
-              style={{
-                fontSize: 13,
-                color: "#666",
-              }}
-            >
+            <span style={{ fontSize: 13, color: "#666" }}>
               Navy - Clothing Store · V3
             </span>
           </div>
@@ -1225,12 +1190,7 @@ export default function InventoryPage() {
             padding: 16,
           }}
         >
-          <div
-            style={{
-              fontWeight: 700,
-              marginBottom: 12,
-            }}
-          >
+          <div style={{ fontWeight: 700, marginBottom: 12 }}>
             Configuración de precios
           </div>
 
@@ -1285,10 +1245,7 @@ export default function InventoryPage() {
                       Math.max(0, Math.min(100, Number(e.target.value))),
                     )
                   }
-                  style={{
-                    ...inputStyle,
-                    marginTop: 5,
-                  }}
+                  style={{ ...inputStyle, marginTop: 5 }}
                 />
 
                 <span>%</span>
@@ -1313,13 +1270,7 @@ export default function InventoryPage() {
             </label>
           </div>
 
-          <button
-            onClick={saveRates}
-            style={{
-              ...primaryBtn,
-              marginTop: 16,
-            }}
-          >
+          <button onClick={saveRates} style={{ ...primaryBtn, marginTop: 16 }}>
             Guardar configuración
           </button>
         </section>
@@ -1340,12 +1291,7 @@ export default function InventoryPage() {
           <div>
             <small>Total unidades</small>
 
-            <strong
-              style={{
-                display: "block",
-                fontSize: 18,
-              }}
-            >
+            <strong style={{ display: "block", fontSize: 18 }}>
               {totalUnits}
             </strong>
           </div>
@@ -1353,12 +1299,7 @@ export default function InventoryPage() {
           <div>
             <small>Diferencia entre tasas</small>
 
-            <strong
-              style={{
-                display: "block",
-                fontSize: 18,
-              }}
-            >
+            <strong style={{ display: "block", fontSize: 18 }}>
               +{tasaDiff}%
             </strong>
           </div>
@@ -1366,12 +1307,7 @@ export default function InventoryPage() {
           <div>
             <small>Ganancia actual</small>
 
-            <strong
-              style={{
-                display: "block",
-                fontSize: 18,
-              }}
-            >
+            <strong style={{ display: "block", fontSize: 18 }}>
               ${currentProfit.toFixed(2)}
             </strong>
           </div>
@@ -1449,12 +1385,7 @@ export default function InventoryPage() {
                 ))}
               </div>
 
-              <div
-                style={{
-                  display: "flex",
-                  gap: 6,
-                }}
-              >
+              <div style={{ display: "flex", gap: 6 }}>
                 {(["instock", "outstock", "all"] as const).map((f) => (
                   <button
                     key={f}
@@ -1478,13 +1409,7 @@ export default function InventoryPage() {
             </div>
 
             {/* PRODUCTOS */}
-            <div
-              style={{
-                display: "flex",
-                flexDirection: "column",
-                gap: 12,
-              }}
-            >
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
               {filteredInventory.length === 0 ? (
                 <p
                   style={{
@@ -1599,18 +1524,9 @@ export default function InventoryPage() {
                               {item.variants.length} variantes
                             </div>
 
-                            <div
-                              style={{
-                                color: "#777",
-                                fontSize: 12,
-                              }}
-                            >
+                            <div style={{ color: "#777", fontSize: 12 }}>
                               Stock total:{" "}
-                              <strong
-                                style={{
-                                  color: "#18333a",
-                                }}
-                              >
+                              <strong style={{ color: "#18333a" }}>
                                 {total}
                               </strong>
                             </div>
@@ -1629,11 +1545,7 @@ export default function InventoryPage() {
                           <div>
                             <small>Precio publicado</small>
 
-                            <strong
-                              style={{
-                                display: "block",
-                              }}
-                            >
+                            <strong style={{ display: "block" }}>
                               ${item.price}
                             </strong>
 
@@ -1643,21 +1555,11 @@ export default function InventoryPage() {
                           <div>
                             <small>Pagando en $</small>
 
-                            <strong
-                              style={{
-                                display: "block",
-                                fontSize: 16,
-                              }}
-                            >
+                            <strong style={{ display: "block", fontSize: 16 }}>
                               ${item.dollarPrice.toFixed(2)}
                             </strong>
 
-                            <span
-                              style={{
-                                color: "#18333a",
-                                fontWeight: 600,
-                              }}
-                            >
+                            <span style={{ color: "#18333a", fontWeight: 600 }}>
                               {discountPercent}% OFF
                             </span>
                           </div>
@@ -1665,11 +1567,7 @@ export default function InventoryPage() {
                           <div>
                             <small>Costo / Ganancia</small>
 
-                            <span
-                              style={{
-                                display: "block",
-                              }}
-                            >
+                            <span style={{ display: "block" }}>
                               ${item.cost} / <strong>${profit}</strong>
                             </span>
 
@@ -1758,12 +1656,7 @@ export default function InventoryPage() {
                             background: "#fafafa",
                           }}
                         >
-                          <div
-                            style={{
-                              display: "grid",
-                              gap: 8,
-                            }}
-                          >
+                          <div style={{ display: "grid", gap: 8 }}>
                             {item.variants.map((v) => (
                               <div
                                 key={v.id}
@@ -1783,11 +1676,7 @@ export default function InventoryPage() {
 
                                 <span>{v.size}</span>
 
-                                <span
-                                  style={{
-                                    color: "#777",
-                                  }}
-                                >
+                                <span style={{ color: "#777" }}>
                                   SKU: {v.sku}
                                 </span>
 
@@ -1814,10 +1703,7 @@ export default function InventoryPage() {
                                   </button>
 
                                   <strong
-                                    style={{
-                                      minWidth: 22,
-                                      textAlign: "center",
-                                    }}
+                                    style={{ minWidth: 22, textAlign: "center" }}
                                   >
                                     {v.stock}
                                   </strong>
@@ -1962,12 +1848,7 @@ export default function InventoryPage() {
                   marginBottom: 16,
                 }}
               >
-                <h2
-                  style={{
-                    margin: 0,
-                    fontSize: 20,
-                  }}
-                >
+                <h2 style={{ margin: 0, fontSize: 20 }}>
                   {editingItem ? "Editar Prenda" : "Nueva Prenda"}
                 </h2>
 
@@ -1989,11 +1870,7 @@ export default function InventoryPage() {
 
               <form
                 onSubmit={saveProduct}
-                style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: 16,
-                }}
+                style={{ display: "flex", flexDirection: "column", gap: 16 }}
               >
                 {/* NOMBRE */}
                 <div>
@@ -2054,12 +1931,7 @@ export default function InventoryPage() {
                     border: "1px solid #eee",
                   }}
                 >
-                  <label
-                    style={{
-                      display: "block",
-                      fontWeight: 600,
-                    }}
-                  >
+                  <label style={{ display: "block", fontWeight: 600 }}>
                     Precio pagando en $ *
                   </label>
 
@@ -2088,21 +1960,12 @@ export default function InventoryPage() {
                     border: "1px solid #dce5e5",
                   }}
                 >
-                  <div
-                    style={{
-                      fontSize: 12,
-                      color: "#666",
-                    }}
-                  >
+                  <div style={{ fontSize: 12, color: "#666" }}>
                     Precio publicado automático
                   </div>
 
                   <strong
-                    style={{
-                      fontSize: 26,
-                      display: "block",
-                      marginTop: 2,
-                    }}
+                    style={{ fontSize: 26, display: "block", marginTop: 2 }}
                   >
                     {formDollarPrice !== "" && tasaBnc > 0 && tasaBcv > 0
                       ? `$${calculatePublishedPrice(Number(formDollarPrice))}`
@@ -2111,11 +1974,7 @@ export default function InventoryPage() {
 
                   {formDollarPrice !== "" && tasaBnc > 0 && tasaBcv > 0 && (
                     <div
-                      style={{
-                        marginTop: 8,
-                        fontSize: 13,
-                        fontWeight: 600,
-                      }}
+                      style={{ marginTop: 8, fontSize: 13, fontWeight: 600 }}
                     >
                       Pagando en $: ${Number(formDollarPrice).toFixed(2)} ·{" "}
                       {discountPercent}% OFF
@@ -2127,12 +1986,7 @@ export default function InventoryPage() {
                 <section style={sectionStyle}>
                   <h3 style={sectionTitle}>1. Colores</h3>
 
-                  <div
-                    style={{
-                      display: "flex",
-                      gap: 8,
-                    }}
-                  >
+                  <div style={{ display: "flex", gap: 8 }}>
                     <input
                       value={newColor}
                       onChange={(e) => setNewColor(e.target.value)}
@@ -2143,10 +1997,7 @@ export default function InventoryPage() {
                         }
                       }}
                       placeholder="Ej. Navy, Ivory, Pink"
-                      style={{
-                        ...inputStyle,
-                        flex: 1,
-                      }}
+                      style={{ ...inputStyle, flex: 1 }}
                     />
 
                     <button
@@ -2197,24 +2048,13 @@ export default function InventoryPage() {
                 <section style={sectionStyle}>
                   <h3 style={sectionTitle}>2. Tallas y stock</h3>
 
-                  <p
-                    style={{
-                      fontSize: 12,
-                      color: "#777",
-                      marginTop: 0,
-                    }}
-                  >
+                  <p style={{ fontSize: 12, color: "#777", marginTop: 0 }}>
                     Selecciona las tallas disponibles para cada color. El SKU se
                     genera automáticamente.
                   </p>
 
                   {formColors.length === 0 && (
-                    <p
-                      style={{
-                        color: "#999",
-                        fontSize: 13,
-                      }}
-                    >
+                    <p style={{ color: "#999", fontSize: 13 }}>
                       Agrega primero un color.
                     </p>
                   )}
@@ -2289,17 +2129,10 @@ export default function InventoryPage() {
                                         Number(e.target.value),
                                       )
                                     }
-                                    style={{
-                                      ...inputStyle,
-                                      marginTop: 6,
-                                    }}
+                                    style={{ ...inputStyle, marginTop: 6 }}
                                   />
 
-                                  <small
-                                    style={{
-                                      color: "#777",
-                                    }}
-                                  >
+                                  <small style={{ color: "#777" }}>
                                     SKU:{" "}
                                     {makeSku(
                                       formName || "PRODUCTO",
@@ -2321,13 +2154,7 @@ export default function InventoryPage() {
                 <section style={sectionStyle}>
                   <h3 style={sectionTitle}>3. Fecha de llegada del stock</h3>
 
-                  <label
-                    style={{
-                      display: "grid",
-                      gap: 6,
-                      fontSize: 13,
-                    }}
-                  >
+                  <label style={{ display: "grid", gap: 6, fontSize: 13 }}>
                     <span>Fecha de llegada</span>
 
                     <input
@@ -2338,13 +2165,7 @@ export default function InventoryPage() {
                     />
                   </label>
 
-                  <p
-                    style={{
-                      fontSize: 12,
-                      color: "#777",
-                      marginBottom: 0,
-                    }}
-                  >
+                  <p style={{ fontSize: 12, color: "#777", marginBottom: 0 }}>
                     Esta fecha se guardará en el historial cuando entre stock.
                   </p>
                 </section>
@@ -2367,22 +2188,13 @@ export default function InventoryPage() {
                     </p>
                   )}
 
-                  <div
-                    style={{
-                      display: "flex",
-                      gap: 6,
-                      marginTop: 8,
-                    }}
-                  >
+                  <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
                     <input
                       type="url"
                       value={imageUrlInput}
                       onChange={(e) => setImageUrlInput(e.target.value)}
                       placeholder="Pegar URL de imagen"
-                      style={{
-                        ...inputStyle,
-                        flex: 1,
-                      }}
+                      style={{ ...inputStyle, flex: 1 }}
                     />
 
                     <button
@@ -2471,9 +2283,7 @@ export default function InventoryPage() {
                         <button
                           type="button"
                           onClick={() => {
-                            const url = (
-                              colorPhotoUrlInputs[color] || ""
-                            ).trim();
+                            const url = (colorPhotoUrlInputs[color] || "").trim();
                             if (!url) return;
                             setFormColorPhotos((prev) => ({
                               ...prev,
@@ -2682,22 +2492,13 @@ export default function InventoryPage() {
                     </p>
                   )}
 
-                  <div
-                    style={{
-                      display: "flex",
-                      gap: 6,
-                      marginTop: 8,
-                    }}
-                  >
+                  <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
                     <input
                       type="url"
                       value={guideUrlInput}
                       onChange={(e) => setGuideUrlInput(e.target.value)}
                       placeholder="Pegar URL de guía de tallas"
-                      style={{
-                        ...inputStyle,
-                        flex: 1,
-                      }}
+                      style={{ ...inputStyle, flex: 1 }}
                     />
 
                     <button
@@ -2725,17 +2526,14 @@ export default function InventoryPage() {
 
                 {/* CUIDADO */}
                 <section style={sectionStyle}>
-                  <h3 style={sectionTitle}>6. Detalles de cuidado</h3>
+                  <h3 style={sectionTitle}>7. Detalles de cuidado</h3>
 
                   <textarea
                     value={formCare}
                     onChange={(e) => setFormCare(e.target.value)}
                     placeholder="Ej. Lavar a mano con agua fría. No usar secadora..."
                     rows={5}
-                    style={{
-                      ...inputStyle,
-                      resize: "vertical",
-                    }}
+                    style={{ ...inputStyle, resize: "vertical" }}
                   />
                 </section>
 
@@ -2760,11 +2558,7 @@ export default function InventoryPage() {
 
                 {/* BOTONES */}
                 <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "flex-end",
-                    gap: 8,
-                  }}
+                  style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}
                 >
                   <button
                     type="button"
@@ -2802,14 +2596,7 @@ function Preview({
   remove: (i: number) => void;
 }) {
   return (
-    <div
-      style={{
-        display: "flex",
-        gap: 8,
-        flexWrap: "wrap",
-        marginTop: 10,
-      }}
-    >
+    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
       {images.map((url, i) => (
         <div
           key={`${url}-${i}`}
@@ -2825,11 +2612,7 @@ function Preview({
           <img
             src={url}
             alt="preview"
-            style={{
-              width: "100%",
-              height: "100%",
-              objectFit: "cover",
-            }}
+            style={{ width: "100%", height: "100%", objectFit: "cover" }}
           />
 
           <button
