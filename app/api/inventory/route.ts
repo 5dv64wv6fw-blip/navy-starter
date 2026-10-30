@@ -9,6 +9,30 @@ export const dynamic = "force-dynamic";
 // UUID de la administradora. No es secreto: la protección real es la sesión.
 const ADMIN_USER_ID = "0a09a9cd-b7ed-49ac-b69a-18dcd2dab933";
 
+// CAMBIO 1: arma una fila de stock_history con las columnas reales de la tabla
+// (product_id, variant_id, product_name, color, size, sku, quantity, arrival_date)
+function historyRow(args: {
+  productId: string;
+  variantId: string;
+  productName: string;
+  color?: string | null;
+  size?: string | null;
+  sku?: string | null;
+  quantity: number;
+  arrivalDate?: string | null;
+}) {
+  return {
+    product_id: args.productId,
+    variant_id: args.variantId,
+    product_name: args.productName || "",
+    color: args.color || "",
+    size: args.size || "",
+    sku: args.sku || "",
+    quantity: args.quantity,
+    arrival_date: args.arrivalDate || null,
+  };
+}
+
 // Cliente público, usado solo en GET (lectura pública).
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -25,7 +49,12 @@ if (!serviceRoleKey) {
 
 const supabase = createClient(supabaseUrl, supabaseKey);
 
-// CAMBIO 1: el cliente se recibe como parámetro, con la sesión de la administradora
+// Cliente de servidor para escribir el historial de stock
+function getHistoryDb(fallback: any) {
+  if (!supabaseUrl || !serviceRoleKey) return fallback;
+  return createClient(supabaseUrl, serviceRoleKey);
+}
+
 // Función auxiliar: Buscar o crear categoría por nombre
 async function getOrCreateCategory(client: any, categoryName: string) {
   if (!categoryName) return null;
@@ -193,7 +222,7 @@ export async function POST(req: Request) {
   const authError = await requireAdmin();
   if (authError) return authError;
 
-  // CAMBIO 2: cliente con la sesión de la administradora (RLS se aplica con su identidad)
+  // Cliente con la sesión de la administradora (RLS se aplica con su identidad)
   const supabase = await createServerClient();
 
   let createdProductId: string | null = null;
@@ -233,7 +262,6 @@ export async function POST(req: Request) {
     }
 
     // 1. Obtener o crear ID de categoría
-    // CAMBIO 3: se pasa el cliente de la sesión
     const categoryId = finalCategoryName
       ? await getOrCreateCategory(supabase, finalCategoryName)
       : null;
@@ -303,19 +331,25 @@ export async function POST(req: Request) {
       createdVariants = insertedVariants || [];
     }
 
-    // 4. Registrar en Historial de Stock si hay cantidades iniciales mayores a 0
+    // 4. Registrar en Historial de Stock las cantidades iniciales mayores a 0
+    // CAMBIO 2: se usan las columnas reales de la tabla mediante historyRow
     const historyEntries = createdVariants
       .filter((v: any) => Number(v.stock) > 0)
-      .map((v: any) => ({
-        product_id: createdProductId,
-        variant_id: v.id,
-        quantity_change: Number(v.stock),
-        type: "INITIAL_STOCK",
-        notes: "Stock inicial registrado al crear producto",
-      }));
+      .map((v: any) =>
+        historyRow({
+          productId: createdProductId as string,
+          variantId: v.id,
+          productName: name,
+          color: v.color,
+          size: v.size,
+          sku: v.sku,
+          quantity: Number(v.stock),
+          arrivalDate: null,
+        }),
+      );
 
     if (historyEntries.length > 0) {
-      const { error: historyError } = await supabase
+      const { error: historyError } = await getHistoryDb(supabase)
         .from("stock_history")
         .insert(historyEntries);
       if (historyError)
@@ -348,7 +382,7 @@ export async function PATCH(req: Request) {
   const authError = await requireAdmin();
   if (authError) return authError;
 
-  // CAMBIO 2 (PATCH): cliente con la sesión de la administradora
+  // Cliente con la sesión de la administradora
   const supabase = await createServerClient();
 
   let body: any;
@@ -396,9 +430,8 @@ export async function PATCH(req: Request) {
             { status: 400 },
           );
 
-        // Traemos también el nombre del producto y los datos de la
-        // variante, porque stock_history guarda esta información
-        // repetida en cada fila (no solo los ids).
+        // Traemos también el nombre del producto y los datos de la variante,
+        // porque stock_history guarda esta información repetida en cada fila.
         const { data: variant, error: fetchErr } = await supabase
           .from("product_variants")
           .select("id, product_id, stock, color, size, sku, products ( name )")
@@ -427,18 +460,20 @@ export async function PATCH(req: Request) {
             ? variant.products[0]
             : (variant as any).products;
 
-          const { error: histErr } = await supabase
+          const { error: histErr } = await getHistoryDb(supabase)
             .from("stock_history")
-            .insert({
-              product_id: variant.product_id,
-              variant_id: variantId,
-              product_name: product?.name || "",
-              color: variant.color || "",
-              size: variant.size || "",
-              sku: variant.sku || "",
-              quantity: Number(change),
-              arrival_date: arrivalDate || null,
-            });
+            .insert(
+              historyRow({
+                productId: variant.product_id,
+                variantId,
+                productName: product?.name || "",
+                color: variant.color,
+                size: variant.size,
+                sku: variant.sku,
+                quantity: Number(change),
+                arrivalDate: arrivalDate || null,
+              }),
+            );
 
           // El stock ya se actualizó; solo registramos el fallo del historial.
           if (histErr)
@@ -485,7 +520,6 @@ export async function PATCH(req: Request) {
           );
         }
 
-        // CAMBIO 3 (PATCH): se pasa el cliente de la sesión
         const categoryId = finalCategoryName
           ? await getOrCreateCategory(supabase, finalCategoryName)
           : null;
@@ -545,7 +579,10 @@ export async function PATCH(req: Request) {
           const historyEntries: any[] = [];
 
           for (const v of variants) {
-            let savedVariant: { id: string; stock: number } | null = null;
+            let savedVariant: {
+              id: string;
+              stock: number;
+            } | null = null;
 
             if (v.id) {
               const { data, error: updateVarErr } = await supabase
@@ -585,21 +622,25 @@ export async function PATCH(req: Request) {
             const newStock = Number(v.stock || 0);
             const stockIncrease = newStock - oldStock;
 
+            // CAMBIO 3: columnas reales de stock_history
             if (stockIncrease > 0 && savedVariant) {
-              historyEntries.push({
-                product_id: productId,
-                variant_id: savedVariant.id,
-                quantity_change: stockIncrease,
-                type: v.id ? "RESTOCK" : "INITIAL_STOCK",
-                notes: v.id
-                  ? "Incremento de stock por edición"
-                  : "Stock inicial de nueva variante",
-              });
+              historyEntries.push(
+                historyRow({
+                  productId,
+                  variantId: savedVariant.id,
+                  productName: name || targetProduct.name || "",
+                  color: v.color,
+                  size: v.size,
+                  sku: v.sku,
+                  quantity: stockIncrease,
+                  arrivalDate: null,
+                }),
+              );
             }
           }
 
           if (historyEntries.length > 0) {
-            const { error: histErr } = await supabase
+            const { error: histErr } = await getHistoryDb(supabase)
               .from("stock_history")
               .insert(historyEntries);
             if (histErr)
@@ -660,7 +701,7 @@ export async function DELETE(req: Request) {
   const authError = await requireAdmin();
   if (authError) return authError;
 
-  // CAMBIO 2 (DELETE): cliente con la sesión de la administradora
+  // Cliente con la sesión de la administradora
   const supabase = await createServerClient();
 
   try {
