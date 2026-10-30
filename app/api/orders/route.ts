@@ -23,7 +23,10 @@ function mapOrder(order: any) {
     ? order.customers[0]
     : order.customers;
 
-  const orderItems = Array.isArray(order.order_items) ? order.order_items : [];
+  const orderItems = Array.isArray(order.order_items)
+    ? order.order_items
+    : [];
+
   const total = Number(order.total_usd || order.total || 0);
 
   const customerName = customer?.first_name
@@ -67,6 +70,7 @@ function mapOrder(order: any) {
 */
 async function requireAdmin() {
   const supabase = await createClient();
+
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -84,12 +88,27 @@ async function requireAdmin() {
   return null;
 }
 
-// Cliente con permisos de servidor.
+/*
+  Cliente con permisos de servidor.
+  Lee las credenciales desde el entorno de Cloudflare Workers.
+*/
 function getAdminDb() {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const { env } = getCloudflareContext();
+
+  const serverEnv = env as unknown as {
+    NEXT_PUBLIC_SUPABASE_URL?: string;
+    SUPABASE_SERVICE_ROLE_KEY?: string;
+  };
+
+  const supabaseUrl = serverEnv.NEXT_PUBLIC_SUPABASE_URL;
+  const serviceKey = serverEnv.SUPABASE_SERVICE_ROLE_KEY;
 
   if (!supabaseUrl || !serviceKey) {
+    console.error("Faltan variables de Supabase en Cloudflare:", {
+      hasSupabaseUrl: Boolean(supabaseUrl),
+      hasServiceKey: Boolean(serviceKey),
+    });
+
     throw new Error("Configuración del servidor incompleta");
   }
 
@@ -110,6 +129,7 @@ export async function GET() {
 
     if (ordersError) {
       console.error("🚨 [ERROR SUPABASE GET /api/orders]:", ordersError);
+
       return NextResponse.json(
         {
           success: false,
@@ -279,6 +299,7 @@ export async function PATCH(request: Request) {
 
     if (error) {
       console.error("🚨 [ERROR SUPABASE PATCH /api/orders]:", error);
+
       return NextResponse.json(
         { success: false, error: error.message },
         { status: 500 },
@@ -372,7 +393,9 @@ async function sendTelegramNotification(orderInfo: {
     `Cliente: ${orderInfo.firstName} ${orderInfo.lastName}`,
     `Teléfono: ${orderInfo.phone}`,
     "",
-    `Entrega: ${orderInfo.deliveryType === "delivery" ? "Delivery" : "Pick Up"}`,
+    `Entrega: ${
+      orderInfo.deliveryType === "delivery" ? "Delivery" : "Pick Up"
+    }`,
     `Dirección / referencia: ${orderInfo.address || "No indicada"}`,
     "",
     "PRODUCTOS:",
@@ -406,11 +429,17 @@ async function sendTelegramNotification(orderInfo: {
 
 export async function POST(request: Request) {
   let db: any;
+
   try {
     db = getAdminDb();
-  } catch {
+  } catch (error) {
+    console.error("Error obteniendo cliente administrador de Supabase:", error);
+
     return NextResponse.json(
-      { success: false, error: "Configuración del servidor incompleta" },
+      {
+        success: false,
+        error: "Configuración del servidor incompleta",
+      },
       { status: 500 },
     );
   }
@@ -435,7 +464,10 @@ export async function POST(request: Request) {
     // 2. Validaciones básicas
     if (!firstName || !lastName) {
       return NextResponse.json(
-        { success: false, error: "Nombre y apellido son requeridos" },
+        {
+          success: false,
+          error: "Nombre y apellido son requeridos",
+        },
         { status: 400 },
       );
     }
@@ -466,7 +498,10 @@ export async function POST(request: Request) {
 
     if (deliveryType === "delivery" && !address) {
       return NextResponse.json(
-        { success: false, error: "La dirección es requerida para delivery" },
+        {
+          success: false,
+          error: "La dirección es requerida para delivery",
+        },
         { status: 400 },
       );
     }
@@ -491,13 +526,20 @@ export async function POST(request: Request) {
         quantity > 20
       ) {
         return NextResponse.json(
-          { success: false, error: "Hay una prenda con datos no válidos" },
+          {
+            success: false,
+            error: "Hay una prenda con datos no válidos",
+          },
           { status: 400 },
         );
       }
 
       const id = String(item.variantId);
-      qtyByVariant.set(id, (qtyByVariant.get(id) || 0) + quantity);
+
+      qtyByVariant.set(
+        id,
+        (qtyByVariant.get(id) || 0) + quantity,
+      );
     }
 
     // 4. Buscar cada variante en el inventario
@@ -519,6 +561,7 @@ export async function POST(request: Request) {
 
     for (const [variantId, quantity] of qtyByVariant.entries()) {
       const variant = variantsById.get(variantId);
+
       const product = Array.isArray(variant?.products)
         ? variant.products[0]
         : variant?.products;
@@ -530,7 +573,10 @@ export async function POST(request: Request) {
         product.show_web === false
       ) {
         return NextResponse.json(
-          { success: false, error: "Una de las prendas ya no está disponible" },
+          {
+            success: false,
+            error: "Una de las prendas ya no está disponible",
+          },
           { status: 409 },
         );
       }
@@ -571,7 +617,9 @@ export async function POST(request: Request) {
       lines.reduce((sum, l) => sum + l.total_price_usd, 0),
     );
 
-    const deliveryFeeUSD = deliveryType === "delivery" ? DELIVERY_FEE_USD : 0;
+    const deliveryFeeUSD =
+      deliveryType === "delivery" ? DELIVERY_FEE_USD : 0;
+
     const totalUSD = round2(subtotalUSD + deliveryFeeUSD);
 
     // 7. Tasas guardadas en el panel
@@ -588,20 +636,33 @@ export async function POST(request: Request) {
 
     const itemsBs = lines.reduce(
       (sum, l) =>
-        sum + getPriceNumbers(l.unit_price_usd, rates).publishedBs * l.quantity,
+        sum +
+        getPriceNumbers(l.unit_price_usd, rates).publishedBs * l.quantity,
       0,
     );
 
     const deliveryBs = deliveryFeeUSD * rates.tasaBCV;
 
     const describeAmount = (method: string, usd: number, bs: number) =>
-      method === "Pago Móvil" ? `Bs. ${bs.toFixed(2)}` : `$${usd.toFixed(2)}`;
+      method === "Pago Móvil"
+        ? `Bs. ${bs.toFixed(2)}`
+        : `$${usd.toFixed(2)}`;
 
     const notes = [
-      `Entrega: ${deliveryType === "delivery" ? "Delivery" : "Pick Up"}`,
-      `Pago prendas: ${itemsPayment} (${describeAmount(itemsPayment, subtotalUSD, itemsBs)})`,
+      `Entrega: ${
+        deliveryType === "delivery" ? "Delivery" : "Pick Up"
+      }`,
+      `Pago prendas: ${itemsPayment} (${describeAmount(
+        itemsPayment,
+        subtotalUSD,
+        itemsBs,
+      )})`,
       deliveryType === "delivery"
-        ? `Pago delivery: ${deliveryPayment} (${describeAmount(deliveryPayment, deliveryFeeUSD, deliveryBs)})`
+        ? `Pago delivery: ${deliveryPayment} (${describeAmount(
+            deliveryPayment,
+            deliveryFeeUSD,
+            deliveryBs,
+          )})`
         : address
           ? `Nota pick up: ${address}`
           : null,
@@ -635,7 +696,10 @@ export async function POST(request: Request) {
 
       const { error: updateError } = await db
         .from("customers")
-        .update({ ...customerFields, updated_at: new Date().toISOString() })
+        .update({
+          ...customerFields,
+          updated_at: new Date().toISOString(),
+        })
         .eq("id", customerId);
 
       if (updateError) throw updateError;
@@ -676,7 +740,12 @@ export async function POST(request: Request) {
     // 10. Guardar las prendas de la orden
     const { error: itemsError } = await db
       .from("order_items")
-      .insert(lines.map((l) => ({ ...l, order_id: order.id })));
+      .insert(
+        lines.map((l) => ({
+          ...l,
+          order_id: order.id,
+        })),
+      );
 
     if (itemsError) throw itemsError;
 
@@ -727,17 +796,28 @@ export async function POST(request: Request) {
         .maybeSingle();
 
       if (savedOrder?.stock_reserved) {
-        await releaseStockForOrder(db, createdOrderId).catch((e: unknown) =>
-          console.error("Error liberando stock tras fallo:", e),
+        await releaseStockForOrder(db, createdOrderId).catch(
+          (e: unknown) =>
+            console.error("Error liberando stock tras fallo:", e),
         );
       }
 
-      await db.from("order_items").delete().eq("order_id", createdOrderId);
-      await db.from("orders").delete().eq("id", createdOrderId);
+      await db
+        .from("order_items")
+        .delete()
+        .eq("order_id", createdOrderId);
+
+      await db
+        .from("orders")
+        .delete()
+        .eq("id", createdOrderId);
     }
 
     return NextResponse.json(
-      { success: false, error: error?.message || "No se pudo crear el pedido" },
+      {
+        success: false,
+        error: error?.message || "No se pudo crear el pedido",
+      },
       { status: 500 },
     );
   }
