@@ -10,9 +10,8 @@ const ORDER_SELECT = `
   order_items ( product_name, color, size, quantity, unit_price_usd, total_price_usd )
 `;
 
-// Valor que guarda el panel al cancelar un pedido.
-// La etiqueta que ve la usuaria dice "Cancelado", pero el valor guardado es "Cancelled".
-const CANCELLED_STATUS = "Cancelled";
+// Estado del panel que significa "pedido cancelado"
+const CANCELLED_STATUS = "Cancelado";
 
 /*
   Convierte una fila de la base de datos en el objeto que usa el panel.
