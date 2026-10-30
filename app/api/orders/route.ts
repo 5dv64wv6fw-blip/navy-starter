@@ -1,3 +1,4 @@
+
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
@@ -7,11 +8,10 @@ import { getPriceNumbers } from "@/lib/inventory";
 const ORDER_SELECT = `
   *,
   customers ( first_name, last_name, phone, address, reference_point ),
-  order_items ( product_name, color, size, quantity, unit_price_usd, total_price_usd )
+  order_items ( product_name, color, size, quantity, unit_price_usd, unit_cost_usd, total_price_usd )
 `;
 
 // Valores de order_status que significan "pedido cancelado".
-// El panel guarda "Cancelled"; aceptamos también "Cancelado" por si cambia el texto.
 const CANCELLED_STATUSES = ["Cancelled", "Cancelado"];
 
 /*
@@ -58,6 +58,7 @@ function mapOrder(order: any) {
       size: item.size,
       quantity: Number(item.quantity || 0),
       unitPriceUSD: Number(item.unit_price_usd || 0),
+      unitCostUSD: Number(item.unit_cost_usd || 0),
       totalPriceUSD: Number(item.total_price_usd || 0),
     })),
   };
