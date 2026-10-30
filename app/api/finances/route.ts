@@ -1,3 +1,4 @@
+
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 
@@ -32,6 +33,7 @@ async function requireAdmin() {
 
   return null;
 }
+
 function monthKey(dateStr: string) {
   return dateStr.slice(0, 7);
 }
@@ -64,7 +66,7 @@ export async function GET() {
     const { data: orders, error: ordersError } = await supabase
       .from("orders")
       .select(
-        "id, order_number, paid_at, subtotal_usd, delivery_fee_usd, order_items ( quantity, unit_price_usd, unit_cost_usd )",
+        "id, order_number, paid_at, order_status, subtotal_usd, delivery_fee_usd, order_items ( quantity, unit_price_usd, unit_cost_usd )",
       )
       .not("paid_at", "is", null)
       .order("paid_at", { ascending: false });
@@ -87,15 +89,28 @@ export async function GET() {
       return monthly.get(key)!;
     };
 
-    // Ingresos y costos de pedidos pagados.
+    // Ingresos y costos de pedidos pagados que no estén cancelados.
     for (const order of orders || []) {
-      if (!order.paid_at) continue;
+      const status = String(order.order_status || "")
+        .trim()
+        .toLowerCase();
+
+      const isCancelled = [
+        "cancelled",
+        "canceled",
+        "cancelado",
+        "cancelada",
+      ].includes(status);
+
+      if (!order.paid_at || isCancelled) continue;
 
       const bucket = getMonth(monthKey(order.paid_at));
 
       const costoPedido = (order.order_items || []).reduce(
         (sum: number, item: any) =>
-          sum + Number(item.unit_cost_usd || 0) * Number(item.quantity || 0),
+          sum +
+          Number(item.unit_cost_usd || 0) *
+            Number(item.quantity || 0),
         0,
       );
 
