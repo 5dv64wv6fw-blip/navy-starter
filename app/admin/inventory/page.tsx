@@ -445,14 +445,6 @@ export default function InventoryPage() {
     return roundPricesUp ? Math.ceil(calculated) : calculated;
   };
 
-  const calculatePublishedBs = (publishedDollarPrice: number) => {
-    if (!publishedDollarPrice || tasaBcv <= 0) {
-      return 0;
-    }
-
-    return publishedDollarPrice * tasaBcv;
-  };
-
   /*
     Guarda las tasas y el porcentaje.
   */
@@ -1110,6 +1102,36 @@ export default function InventoryPage() {
     );
   });
 
+  /*
+    HISTORIAL POR MES
+    Agrupa las entradas por mes (YYYY-MM), del más reciente al más antiguo.
+  */
+  const historyByMonth = (() => {
+    const groups = new Map<string, HistoryItem[]>();
+
+    for (const h of history) {
+      const key = (h.arrivalDate || h.date || "").slice(0, 7);
+      if (!key) continue;
+      groups.set(key, [...(groups.get(key) || []), h]);
+    }
+
+    return [...groups.entries()]
+      .sort((a, b) => b[0].localeCompare(a[0]))
+      .map(([key, items]) => {
+        const [y, m] = key.split("-").map(Number);
+        const label = new Date(y, m - 1, 1).toLocaleDateString("es-VE", {
+          month: "long",
+          year: "numeric",
+        });
+        return {
+          key,
+          label,
+          items,
+          totalUnits: items.reduce((s, i) => s + i.quantity, 0),
+        };
+      });
+  })();
+
   const totalUnits = inventory.reduce(
     (s, p) => s + p.variants.reduce((x, v) => x + v.stock, 0),
     0,
@@ -1485,7 +1507,9 @@ export default function InventoryPage() {
 
                   const expanded = expandedIds.includes(item.id);
 
-                  const colors = [...new Set(item.variants.map((v) => v.color))];
+                  const colors = [
+                    ...new Set(item.variants.map((v) => v.color)),
+                  ];
 
                   const sizes = [...new Set(item.variants.map((v) => v.size))];
 
@@ -1668,12 +1692,16 @@ export default function InventoryPage() {
                               padding: "5px 8px",
                               borderRadius: 12,
                               border: "1px solid #ccc",
-                              background: item.webVisible ? "#e8f5e9" : "#f5f5f5",
+                              background: item.webVisible
+                                ? "#e8f5e9"
+                                : "#f5f5f5",
                               cursor: "pointer",
                               fontSize: 11,
                             }}
                           >
-                            {item.webVisible ? "● Web: Visible" : "○ Web: Oculto"}
+                            {item.webVisible
+                              ? "● Web: Visible"
+                              : "○ Web: Oculto"}
                           </button>
 
                           <button
@@ -1687,7 +1715,9 @@ export default function InventoryPage() {
                               fontSize: 12,
                             }}
                           >
-                            {expanded ? "Ocultar variantes ▲" : "Ver variantes ▼"}
+                            {expanded
+                              ? "Ocultar variantes ▲"
+                              : "Ver variantes ▼"}
                           </button>
 
                           <button
@@ -1769,7 +1799,9 @@ export default function InventoryPage() {
                                   }}
                                 >
                                   <button
-                                    onClick={() => updateStock(item.id, v.id, -1)}
+                                    onClick={() =>
+                                      updateStock(item.id, v.id, -1)
+                                    }
                                     disabled={v.stock <= 0}
                                     style={{
                                       width: 25,
@@ -1791,7 +1823,9 @@ export default function InventoryPage() {
                                   </strong>
 
                                   <button
-                                    onClick={() => updateStock(item.id, v.id, 1)}
+                                    onClick={() =>
+                                      updateStock(item.id, v.id, 1)
+                                    }
                                     style={{
                                       width: 25,
                                       height: 25,
@@ -1814,81 +1848,83 @@ export default function InventoryPage() {
             </div>
           </>
         ) : (
-          /* HISTORIAL */
-          <div
-            style={{
-              background: "#fff",
-              border: "1px solid #eee",
-              borderRadius: 8,
-              padding: 16,
-              overflowX: "auto",
-            }}
-          >
-            <h3>Historial de Entradas</h3>
+          /* HISTORIAL POR MES */
+          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            {historyByMonth.length === 0 && (
+              <p style={{ color: "#888" }}>No hay registros.</p>
+            )}
 
-            <table
-              style={{
-                width: "100%",
-                borderCollapse: "collapse",
-                fontSize: 13,
-              }}
-            >
-              <thead>
-                <tr
-                  style={{
-                    textAlign: "left",
-                    borderBottom: "2px solid #eee",
-                  }}
-                >
-                  <th>Fecha</th>
-                  <th>Producto</th>
-                  <th>Color</th>
-                  <th>Talla</th>
-                  <th>SKU</th>
-                  <th>Cantidad</th>
-                </tr>
-              </thead>
-
-              <tbody>
-                {history.map((h) => (
-                  <tr
-                    key={h.id}
-                    style={{
-                      borderBottom: "1px solid #f0f0f0",
-                    }}
-                  >
-                    <td>{h.arrivalDate || h.date.split("T")[0]}</td>
-
-                    <td>{h.productName}</td>
-
-                    <td>{h.color}</td>
-
-                    <td>{h.size}</td>
-
-                    <td>{h.sku}</td>
-
-                    <td
-                      style={{
-                        color: "green",
-                        fontWeight: 700,
-                      }}
-                    >
-                      +{h.quantity}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-
-            {history.length === 0 && (
-              <p
+            {historyByMonth.map((group) => (
+              <div
+                key={group.key}
                 style={{
-                  color: "#888",
+                  background: "#fff",
+                  border: "1px solid #eee",
+                  borderRadius: 8,
+                  padding: 16,
+                  overflowX: "auto",
                 }}
               >
-                No hay registros.
-              </p>
-            )}
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    marginBottom: 12,
+                    flexWrap: "wrap",
+                    gap: 8,
+                  }}
+                >
+                  <h3 style={{ margin: 0, textTransform: "capitalize" }}>
+                    {group.label}
+                  </h3>
+                  <strong style={{ color: "green" }}>
+                    +{group.totalUnits} unidades
+                  </strong>
+                </div>
+
+                <table
+                  style={{
+                    width: "100%",
+                    borderCollapse: "collapse",
+                    fontSize: 13,
+                  }}
+                >
+                  <thead>
+                    <tr
+                      style={{
+                        textAlign: "left",
+                        borderBottom: "2px solid #eee",
+                      }}
+                    >
+                      <th>Fecha</th>
+                      <th>Producto</th>
+                      <th>Color</th>
+                      <th>Talla</th>
+                      <th>SKU</th>
+                      <th>Cantidad</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {group.items.map((h) => (
+                      <tr
+                        key={h.id}
+                        style={{ borderBottom: "1px solid #f0f0f0" }}
+                      >
+                        <td>{h.arrivalDate || h.date.split("T")[0]}</td>
+                        <td>{h.productName}</td>
+                        <td>{h.color}</td>
+                        <td>{h.size}</td>
+                        <td>{h.sku}</td>
+                        <td style={{ color: "green", fontWeight: 700 }}>
+                          +{h.quantity}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ))}
           </div>
         )}
 
@@ -2113,7 +2149,11 @@ export default function InventoryPage() {
                       }}
                     />
 
-                    <button type="button" onClick={addColor} style={secondaryBtn}>
+                    <button
+                      type="button"
+                      onClick={addColor}
+                      style={secondaryBtn}
+                    >
                       + Agregar
                     </button>
                   </div>
@@ -2261,7 +2301,11 @@ export default function InventoryPage() {
                                     }}
                                   >
                                     SKU:{" "}
-                                    {makeSku(formName || "PRODUCTO", color, size)}
+                                    {makeSku(
+                                      formName || "PRODUCTO",
+                                      color,
+                                      size,
+                                    )}
                                   </small>
                                 </>
                               )}
@@ -2365,8 +2409,8 @@ export default function InventoryPage() {
                   <h3 style={sectionTitle}>5. Fotos por color</h3>
                   <p style={{ fontSize: 12, color: "#777", marginTop: 0 }}>
                     Sube las fotos de cada color por separado. Si un color no
-                    tiene fotos aquí, la tienda utilizará las fotos generales del
-                    producto.
+                    tiene fotos aquí, la tienda utilizará las fotos generales
+                    del producto.
                   </p>
                   {formColors.length === 0 && (
                     <p style={{ fontSize: 13, color: "#777" }}>
@@ -2427,7 +2471,9 @@ export default function InventoryPage() {
                         <button
                           type="button"
                           onClick={() => {
-                            const url = (colorPhotoUrlInputs[color] || "").trim();
+                            const url = (
+                              colorPhotoUrlInputs[color] || ""
+                            ).trim();
                             if (!url) return;
                             setFormColorPhotos((prev) => ({
                               ...prev,
