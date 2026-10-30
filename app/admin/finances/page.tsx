@@ -35,6 +35,7 @@ const categoryLabels: Record<Movement["category"], string> = {
 function monthLabel(key: string) {
   const [year, month] = key.split("-").map(Number);
   const date = new Date(year, month - 1, 1);
+
   return date.toLocaleDateString("es-VE", {
     month: "long",
     year: "numeric",
@@ -42,7 +43,16 @@ function monthLabel(key: string) {
 }
 
 function currentMonthKey() {
-  return new Date().toISOString().slice(0, 7);
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Caracas",
+    year: "numeric",
+    month: "2-digit",
+  }).formatToParts(new Date());
+
+  const year = parts.find((part) => part.type === "year")?.value;
+  const month = parts.find((part) => part.type === "month")?.value;
+
+  return `${year}-${month}`;
 }
 
 export default function FinancesPage() {
@@ -53,11 +63,26 @@ export default function FinancesPage() {
 
   const [category, setCategory] =
     useState<Movement["category"]>("gasto");
+
   const [description, setDescription] = useState("");
   const [amount, setAmount] = useState<number | "">("");
   const [movementDate, setMovementDate] = useState(
-    () => new Date().toISOString().split("T")[0],
+    () => {
+      const parts = new Intl.DateTimeFormat("en-CA", {
+        timeZone: "America/Caracas",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+      }).formatToParts(new Date());
+
+      const year = parts.find((part) => part.type === "year")?.value;
+      const month = parts.find((part) => part.type === "month")?.value;
+      const day = parts.find((part) => part.type === "day")?.value;
+
+      return `${year}-${month}-${day}`;
+    },
   );
+
   const [isSaving, setIsSaving] = useState(false);
 
   const loadFinances = async () => {
@@ -65,12 +90,11 @@ export default function FinancesPage() {
       const res = await fetch("/api/finances", {
         cache: "no-store",
       });
+
       const data = await res.json();
 
       if (!res.ok || !data.success) {
-        throw new Error(
-          data.error || "No se pudieron cargar las finanzas",
-        );
+        throw new Error(data.error || "No se pudieron cargar las finanzas");
       }
 
       setMonthly(data.monthly || []);
@@ -86,14 +110,11 @@ export default function FinancesPage() {
     loadFinances();
   }, []);
 
-  // Meses con datos, más el mes actual aunque todavía no tenga nada.
   const availableMonths = useMemo(() => {
     const keys = new Set(monthly.map((m) => m.month));
     keys.add(currentMonthKey());
 
-    return Array.from(keys).sort((a, b) =>
-      b.localeCompare(a),
-    );
+    return Array.from(keys).sort((a, b) => b.localeCompare(a));
   }, [monthly]);
 
   const currentSummary: MonthSummary = monthly.find(
@@ -118,11 +139,7 @@ export default function FinancesPage() {
   const addMovement = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (
-      !description.trim() ||
-      amount === "" ||
-      Number(amount) <= 0
-    ) {
+    if (!description.trim() || amount === "" || Number(amount) <= 0) {
       alert("Completa la descripción y un monto mayor a 0.");
       return;
     }
@@ -146,13 +163,12 @@ export default function FinancesPage() {
       const data = await res.json();
 
       if (!res.ok || !data.success) {
-        throw new Error(
-          data.error || "No se pudo guardar el movimiento",
-        );
+        throw new Error(data.error || "No se pudo guardar el movimiento");
       }
 
       setDescription("");
       setAmount("");
+
       await loadFinances();
     } catch (error) {
       alert(
@@ -187,7 +203,7 @@ export default function FinancesPage() {
       alert(
         error instanceof Error
           ? error.message
-          : "No se pudo eliminar",
+          : "No se pudo eliminar el movimiento",
       );
     }
   };
@@ -231,6 +247,7 @@ export default function FinancesPage() {
           >
             NAVY ADMIN
           </Link>
+
           <AdminMenu />
         </div>
       </header>
@@ -245,9 +262,7 @@ export default function FinancesPage() {
           marginBottom: 20,
         }}
       >
-        <h1 style={{ fontSize: 24, margin: 0 }}>
-          Finanzas
-        </h1>
+        <h1 style={{ fontSize: 24, margin: 0 }}>Finanzas</h1>
 
         <select
           value={selectedMonth}
@@ -274,8 +289,7 @@ export default function FinancesPage() {
           <div
             style={{
               display: "grid",
-              gridTemplateColumns:
-                "repeat(auto-fit,minmax(150px,1fr))",
+              gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))",
               gap: 12,
               marginBottom: 20,
             }}
@@ -284,35 +298,42 @@ export default function FinancesPage() {
               label="Ventas de prendas"
               value={currentSummary.ventas}
             />
+
             <Card
               label="Delivery cobrado"
               value={currentSummary.delivery}
             />
+
+            {/* COSTOS: SIN SIGNO NEGATIVO NI COLOR ROJO */}
             <Card
               label="Costos"
               value={currentSummary.costos}
-              negative
             />
+
             <Card
               label="Ganancia bruta"
               value={currentSummary.gananciaBruta}
               highlight
             />
+
             <Card
               label="Gastos"
               value={currentSummary.gastos}
               negative
             />
+
             <Card
               label="Ganancia neta"
               value={currentSummary.gananciaNeta}
               highlight
             />
+
             <Card
               label="Reinversión"
               value={currentSummary.reinversion}
               muted
             />
+
             <Card
               label="Pagos a Nicole"
               value={currentSummary.retirosNicole}
@@ -343,53 +364,41 @@ export default function FinancesPage() {
               onSubmit={addMovement}
               style={{
                 display: "grid",
-                gridTemplateColumns:
-                  "repeat(auto-fit,minmax(150px,1fr))",
+                gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))",
                 gap: 10,
                 alignItems: "end",
               }}
             >
               <div>
-                <label style={labelStyle}>
-                  Categoría
-                </label>
+                <label style={labelStyle}>Categoría</label>
+
                 <select
                   value={category}
                   onChange={(e) =>
-                    setCategory(
-                      e.target.value as Movement["category"],
-                    )
+                    setCategory(e.target.value as Movement["category"])
                   }
                   style={inputStyle}
                 >
                   <option value="gasto">Gasto</option>
-                  <option value="reinversion">
-                    Reinversión
-                  </option>
-                  <option value="retiro_nicole">
-                    Pago a Nicole
-                  </option>
+                  <option value="reinversion">Reinversión</option>
+                  <option value="retiro_nicole">Pago a Nicole</option>
                 </select>
               </div>
 
               <div style={{ gridColumn: "span 2" }}>
-                <label style={labelStyle}>
-                  Descripción
-                </label>
+                <label style={labelStyle}>Descripción</label>
+
                 <input
                   value={description}
-                  onChange={(e) =>
-                    setDescription(e.target.value)
-                  }
+                  onChange={(e) => setDescription(e.target.value)}
                   placeholder="Ej. Publicidad Instagram"
                   style={inputStyle}
                 />
               </div>
 
               <div>
-                <label style={labelStyle}>
-                  Monto USD
-                </label>
+                <label style={labelStyle}>Monto USD</label>
+
                 <input
                   type="number"
                   min="0"
@@ -397,9 +406,7 @@ export default function FinancesPage() {
                   value={amount}
                   onChange={(e) =>
                     setAmount(
-                      e.target.value === ""
-                        ? ""
-                        : Number(e.target.value),
+                      e.target.value === "" ? "" : Number(e.target.value),
                     )
                   }
                   style={inputStyle}
@@ -407,15 +414,12 @@ export default function FinancesPage() {
               </div>
 
               <div>
-                <label style={labelStyle}>
-                  Fecha
-                </label>
+                <label style={labelStyle}>Fecha</label>
+
                 <input
                   type="date"
                   value={movementDate}
-                  onChange={(e) =>
-                    setMovementDate(e.target.value)
-                  }
+                  onChange={(e) => setMovementDate(e.target.value)}
                   style={inputStyle}
                 />
               </div>
@@ -430,9 +434,7 @@ export default function FinancesPage() {
                   background: "#18333a",
                   color: "#fff",
                   fontWeight: 600,
-                  cursor: isSaving
-                    ? "default"
-                    : "pointer",
+                  cursor: isSaving ? "default" : "pointer",
                   opacity: isSaving ? 0.7 : 1,
                 }}
               >
@@ -562,24 +564,17 @@ function Card({
         padding: 14,
       }}
     >
-      <small style={{ color: "#777" }}>
-        {label}
-      </small>
+      <small style={{ color: "#777" }}>{label}</small>
 
       <strong
         style={{
           display: "block",
           fontSize: 18,
           marginTop: 4,
-          color: muted
-            ? "#888"
-            : negative
-              ? "#d32f2f"
-              : "#18333a",
+          color: muted ? "#888" : negative ? "#d32f2f" : "#18333a",
         }}
       >
-        {negative && value > 0 ? "-" : ""}$
-        {value.toFixed(2)}
+        {negative && value > 0 ? "-" : ""}${value.toFixed(2)}
       </strong>
     </div>
   );
