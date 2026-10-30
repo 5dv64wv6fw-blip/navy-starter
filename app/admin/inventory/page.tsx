@@ -158,6 +158,24 @@ function readCategory(raw: any): string {
   return name && name !== "Sin categoría" ? name : "Sin categoría";
 }
 
+// CAMBIO: devuelve la fecha (AAAA-MM-DD) en hora de Venezuela.
+// Las fechas de llegada ya son de calendario y se respetan tal cual.
+// Las marcas de tiempo de la base de datos (UTC) se convierten a hora local.
+function toCaracasDate(value: string): string {
+  if (!value) return "";
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
+
+  const date = new Date(value);
+  if (isNaN(date.getTime())) return "";
+
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Caracas",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(date);
+}
+
 /*
   La base de datos guarda cada entrada con "created_at" y "arrival_date".
   La pantalla espera "date" y "arrivalDate".
@@ -1080,15 +1098,16 @@ export default function InventoryPage() {
 
   /*
     HISTORIAL POR MES
-    Agrupa las entradas por mes (YYYY-MM), del más reciente al más antiguo.
-    Usa la fecha de llegada; si no existe, la fecha de registro.
+    Agrupa las entradas por mes (AAAA-MM) según la hora de Venezuela,
+    del más reciente al más antiguo.
   */
   const historyByMonth = (() => {
     const groups = new Map<string, HistoryItem[]>();
 
     for (const h of history) {
-      const key = (h.arrivalDate || h.date || "").slice(0, 7);
-      if (!key) continue;
+      const day = toCaracasDate(h.arrivalDate || h.date || "");
+      if (!day) continue;
+      const key = day.slice(0, 7);
       groups.set(key, [...(groups.get(key) || []), h]);
     }
 
@@ -1797,7 +1816,8 @@ export default function InventoryPage() {
                         key={h.id}
                         style={{ borderBottom: "1px solid #f0f0f0" }}
                       >
-                        <td>{h.arrivalDate || h.date.split("T")[0]}</td>
+                        {/* CAMBIO: fecha en hora de Venezuela */}
+                        <td>{toCaracasDate(h.arrivalDate || h.date)}</td>
                         <td>{h.productName}</td>
                         <td>{h.color}</td>
                         <td>{h.size}</td>
