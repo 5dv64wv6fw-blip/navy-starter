@@ -3,6 +3,9 @@ import { createClient } from "@/lib/supabase/server";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
 import { getPriceNumbers } from "@/lib/inventory";
 
+// UUID de la administradora. No es secreto: la protección real es la sesión.
+const ADMIN_USER_ID = "0a09a9cd-b7ed-49ac-b69a-18dcd2dab933";
+
 // Qué columnas (y tablas relacionadas) pedimos a Supabase por cada orden
 const ORDER_SELECT = `
   *,
@@ -10,8 +13,9 @@ const ORDER_SELECT = `
   order_items ( product_name, color, size, quantity, unit_price_usd, total_price_usd )
 `;
 
-// Estado del panel que significa "pedido cancelado"
-const CANCELLED_STATUS = "Cancelado";
+// Valor que guarda el panel al cancelar un pedido.
+// La etiqueta que ve la usuaria dice "Cancelado", pero el valor guardado es "Cancelled".
+const CANCELLED_STATUS = "Cancelled";
 
 /*
   Convierte una fila de la base de datos en el objeto que usa el panel.
@@ -63,9 +67,8 @@ function mapOrder(order: any) {
 }
 
 /*
-  Comprueba que quien llama a este endpoint inició sesión como admin.
-  Se usa en GET y PATCH (leer y cambiar estados de pedidos), pero NO
-  en POST: el checkout de la tienda lo usa cualquier clienta sin sesión.
+  Comprueba que quien llama a este endpoint es la administradora.
+  Se usa en GET y PATCH, pero NO en POST: el checkout lo usa cualquier clienta.
 */
 async function requireAdmin() {
   const supabase = await createClient();
@@ -83,6 +86,13 @@ async function requireAdmin() {
     );
   }
 
+  if (user.id !== ADMIN_USER_ID) {
+    return NextResponse.json(
+      { success: false, error: "No tienes permiso para esta acción." },
+      { status: 403 },
+    );
+  }
+
   return null;
 }
 
@@ -92,6 +102,11 @@ function getAdminDb() {
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
   if (!supabaseUrl || !serviceKey) {
+    // Solo registramos si existen las variables, nunca sus valores
+    console.error("[getAdminDb] variables faltantes:", {
+      NEXT_PUBLIC_SUPABASE_URL: !!supabaseUrl,
+      SUPABASE_SERVICE_ROLE_KEY: !!serviceKey,
+    });
     throw new Error("Configuración del servidor incompleta");
   }
 
@@ -155,7 +170,6 @@ async function reserveStockForOrder(db: any, orderDatabaseId: string) {
 
   if (itemsError) throw itemsError;
 
-  // Descontamos cada variante. Usamos una validación de stock antes de restar.
   for (const item of items || []) {
     if (!item.variant_id) continue;
 
@@ -216,8 +230,9 @@ async function releaseStockForOrder(db: any, orderDatabaseId: string) {
       .single();
 
     if (variantError || !variant) {
-      console.error("Variante no encontrada al liberar stock:", variantError);
-      continue;
+      throw new Error(
+        "No se encontró una de las tallas del pedido. No se devolvió el stock.",
+      );
     }
 
     const { error: updateError } = await db
@@ -264,6 +279,27 @@ export async function PATCH(request: Request) {
 
     const supabase = await createClient();
 
+    // 1. Si el pedido se cancela, primero devolvemos el stock.
+    //    Así, si algo falla, el pedido NO queda cancelado a medias.
+    if (orderStatus === CANCELLED_STATUS) {
+      const db = getAdminDb();
+
+      const { data: current, error: currentError } = await db
+        .from("orders")
+        .select("id, stock_reserved, stock_released")
+        .eq("order_number", orderId)
+        .single();
+
+      if (currentError || !current) {
+        throw new Error("Pedido no encontrado.");
+      }
+
+      if (current.stock_reserved && !current.stock_released) {
+        await releaseStockForOrder(db, current.id);
+      }
+    }
+
+    // 2. Luego actualizamos el estado y los demás campos
     const updates: Record<string, unknown> = {};
 
     if (orderStatus !== undefined) updates.order_status = orderStatus;
@@ -289,18 +325,6 @@ export async function PATCH(request: Request) {
         { success: false, error: error.message },
         { status: 500 },
       );
-    }
-
-    // Si el pedido se cancela y su stock estaba reservado y aún no se liberó,
-    // devolvemos las prendas al inventario disponible.
-    if (
-      data.order_status === CANCELLED_STATUS &&
-      data.stock_reserved &&
-      !data.stock_released
-    ) {
-      const db = getAdminDb();
-      await releaseStockForOrder(db, data.id);
-      data.stock_released = true;
     }
 
     return NextResponse.json({
