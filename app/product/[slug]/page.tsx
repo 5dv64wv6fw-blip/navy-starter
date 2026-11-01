@@ -344,7 +344,9 @@ export default function ProductPage({
 
   const availableColors = Array.from(
     new Set(
-      inStockVariants.map((v) => v.color).filter((c): c is string => Boolean(c)),
+      inStockVariants
+        .map((v) => v.color)
+        .filter((c): c is string => Boolean(c)),
     ),
   );
 
@@ -439,8 +441,7 @@ export default function ProductPage({
 
   const cantidadEnBolsa = cart
     .filter(
-      (item) =>
-        String(item.id) === cartItemId && item.size === currentSize,
+      (item) => String(item.id) === cartItemId && item.size === currentSize,
     )
     .reduce((sum, item) => sum + item.quantity, 0);
 
@@ -717,8 +718,7 @@ export default function ProductPage({
                 maxWidth: "450px",
               }}
             >
-              {activeVariant?.description ||
-                "Pieza atemporal de nuestra colección, diseñada con materiales de alta calidad para acompañarte en tu día a día."}
+              {activeVariant?.description || ""}
             </p>
 
             {/* Selector de Color (solo colores con stock) */}
@@ -899,8 +899,7 @@ export default function ProductPage({
 
                 border: "none",
 
-                cursor:
-                  isOutOfStock || bolsaLlena ? "not-allowed" : "pointer",
+                cursor: isOutOfStock || bolsaLlena ? "not-allowed" : "pointer",
 
                 textAlign: "center",
 
@@ -912,8 +911,7 @@ export default function ProductPage({
 
                 fontSize: "14px",
 
-                backgroundColor:
-                  isOutOfStock || bolsaLlena ? "#ccc" : "#111",
+                backgroundColor: isOutOfStock || bolsaLlena ? "#ccc" : "#111",
 
                 color: "#fff",
               }}
