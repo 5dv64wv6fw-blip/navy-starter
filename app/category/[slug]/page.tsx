@@ -16,15 +16,15 @@ const categoryData: Record<string, { title: string; description: string }> = {
     description: "",
   },
   dresses: {
-    title: "Dresses & Sets",
+    title: "Vestidos & Set",
     description: "",
   },
   bottoms: {
-    title: "Skirts & Pants",
+    title: "Pants & Faldas",
     description: "",
   },
   basics: {
-    title: "The Basics",
+    title: "Otros",
     description: "",
   },
 };
