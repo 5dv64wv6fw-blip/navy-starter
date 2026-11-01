@@ -158,7 +158,7 @@ function readCategory(raw: any): string {
   return name && name !== "Sin categoría" ? name : "Sin categoría";
 }
 
-// CAMBIO: devuelve la fecha (AAAA-MM-DD) en hora de Venezuela.
+// Devuelve la fecha (AAAA-MM-DD) en hora de Venezuela.
 // Las fechas de llegada ya son de calendario y se respetan tal cual.
 // Las marcas de tiempo de la base de datos (UTC) se convierten a hora local.
 function toCaracasDate(value: string): string {
@@ -1142,6 +1142,15 @@ export default function InventoryPage() {
     0,
   );
 
+  /*
+    Total actual en $: suma del precio en $ de cada prenda
+    multiplicado por las unidades que hay en stock.
+  */
+  const currentDollarTotal = inventory.reduce(
+    (s, p) => s + p.dollarPrice * p.variants.reduce((x, v) => x + v.stock, 0),
+    0,
+  );
+
   const tasaDiff =
     tasaBcv > 0 ? (((tasaBnc - tasaBcv) / tasaBcv) * 100).toFixed(1) : "0";
 
@@ -1328,6 +1337,14 @@ export default function InventoryPage() {
 
             <strong style={{ display: "block", fontSize: 18 }}>
               ${currentProfit.toFixed(2)}
+            </strong>
+          </div>
+
+          <div>
+            <small>Total actual en $</small>
+
+            <strong style={{ display: "block", fontSize: 18 }}>
+              ${currentDollarTotal.toFixed(2)}
             </strong>
           </div>
         </div>
@@ -1722,7 +1739,10 @@ export default function InventoryPage() {
                                   </button>
 
                                   <strong
-                                    style={{ minWidth: 22, textAlign: "center" }}
+                                    style={{
+                                      minWidth: 22,
+                                      textAlign: "center",
+                                    }}
                                   >
                                     {v.stock}
                                   </strong>
@@ -1816,7 +1836,6 @@ export default function InventoryPage() {
                         key={h.id}
                         style={{ borderBottom: "1px solid #f0f0f0" }}
                       >
-                        {/* CAMBIO: fecha en hora de Venezuela */}
                         <td>{toCaracasDate(h.arrivalDate || h.date)}</td>
                         <td>{h.productName}</td>
                         <td>{h.color}</td>
@@ -2303,7 +2322,9 @@ export default function InventoryPage() {
                         <button
                           type="button"
                           onClick={() => {
-                            const url = (colorPhotoUrlInputs[color] || "").trim();
+                            const url = (
+                              colorPhotoUrlInputs[color] || ""
+                            ).trim();
                             if (!url) return;
                             setFormColorPhotos((prev) => ({
                               ...prev,
@@ -2578,7 +2599,11 @@ export default function InventoryPage() {
 
                 {/* BOTONES */}
                 <div
-                  style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}
+                  style={{
+                    display: "flex",
+                    justifyContent: "flex-end",
+                    gap: 8,
+                  }}
                 >
                   <button
                     type="button"
