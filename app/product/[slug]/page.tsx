@@ -1144,15 +1144,12 @@ export default function ProductPage({
                       className="muted"
                       style={{ fontSize: "14px", lineHeight: 1.6, margin: 0 }}
                     >
-                      • <strong>Plazo de Cambio:</strong> Aceptamos solicitudes
-                      de cambio dentro de los primeros 7 días continuos tras
-                      recibir tu pedido.
+                      • <strong>Plazo de Cambio:</strong> Realizamos cambios
+                      notificados el mismo día de la entrega.
                       <br />• <strong>Condiciones:</strong> Las prendas deben
                       estar sin usar, sin lavar y conservar sus etiquetas
                       originales.
-                      <br />• <strong>Costos de envío:</strong> El costo del
-                      delivery o flete por cambio corre por cuenta del cliente
-                      (salvo por defecto de fábrica).
+                      <br />•
                     </p>
                   </div>
                 )}
