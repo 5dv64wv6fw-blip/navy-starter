@@ -13,19 +13,19 @@ import {
 const categoryData: Record<string, { title: string; description: string }> = {
   tops: {
     title: "Tops",
-    description: "Piezas versátiles de corte impecable para el día a día.",
+    description: "",
   },
   dresses: {
     title: "Dresses & Sets",
-    description: "Siluetas fluidas y relajadas con estética costera.",
+    description: "",
   },
   bottoms: {
     title: "Skirts & Pants",
-    description: "Básicos estructurados para combinar sin esfuerzo.",
+    description: "",
   },
   basics: {
     title: "The Basics",
-    description: "Esenciales atemporales diseñados para durar.",
+    description: "",
   },
 };
 
